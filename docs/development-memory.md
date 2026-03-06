@@ -57,6 +57,7 @@
 ### Verification
 - `client`: `npx tsc --noEmit` passed after the upload state changes.
 - `server`: `node --check src/index.js` passed after the upload response and cleanup changes.
+- Milestone backup commit created: `658f1fb5ecf3349669039661ae3b4456ee95124d`.
 
 ### Next Steps
 - P0-06: normalize error codes and structured logs.
