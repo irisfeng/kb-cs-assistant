@@ -1,0 +1,217 @@
+{
+  "app": {
+    "title": "Customer Service Knowledge Assistant",
+    "description": "Manage support documents, SOP rules, and AI response playbooks in one workspace for search, Q&A, and service operations.",
+    "nav": {
+      "solutions": "Knowledge Base",
+      "upload": "Upload Docs",
+      "capabilities": "SOP Library",
+      "generator": "AI Playbooks"
+    },
+    "sidebar": {
+      "expand": "Expand sidebar",
+      "collapse": "Collapse sidebar"
+    },
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode"
+    },
+    "language": {
+      "chinese": "Chinese",
+      "english": "English"
+    },
+    "home": {
+      "badge": "Customer Service Copilot",
+      "hero_title": "Put knowledge, SOPs, and reply strategies into one support workspace",
+      "hero_description": "Reuse the existing document parsing and retrieval stack for support FAQs, product guidance, standard replies, and AI handling playbooks.",
+      "knowledge_count": "Knowledge Docs",
+      "sop_count": "SOP Items",
+      "playbook_count": "Playbooks",
+      "assistant_ready": "AI Online",
+      "archive_title": "Support Knowledge Documents",
+      "archive_subtitle": "Knowledge Base",
+      "new_solution": "New Document",
+      "upload_title": "Upload Support Material",
+      "search_placeholder": "Search docs, FAQs, or file names...",
+      "grid_view": "Grid view",
+      "list_view": "List view",
+      "empty_title": "No knowledge documents yet",
+      "empty_hint": "Start by uploading FAQs, product guides, refund policies, or support training materials.",
+      "stat_documents": "Docs",
+      "stat_filtered": "Results",
+      "stat_assistant": "Assistant",
+      "panel_title": "Support Ops Focus",
+      "panel_items": {
+        "sla": "Answer consistently around SLA, escalation, and compensation rules",
+        "handoff": "Move complex issues from bot to human quickly",
+        "consistency": "Keep every support channel aligned on the same knowledge"
+      },
+      "quick_prompts_title": "Quick Questions",
+      "workflow_title": "Recommended Source Material",
+      "workflow_items": {
+        "faq": "FAQ, refund, replacement, and after-sales rules",
+        "product": "Product manuals, usage guides, pricing, and campaign notes",
+        "sop": "Escalation flows, ticket rules, and QA standards"
+      }
+    }
+  },
+  "solutions": {
+    "title": "Knowledge Documents",
+    "add_new": "Upload Document",
+    "form": {
+      "title": "Document Title",
+      "title_placeholder": "e.g. Refund and After-sales Policy",
+      "description": "Description",
+      "description_placeholder": "Describe where support agents should use this document...",
+      "document": "Document (PDF, Word, Markdown, CSV, Excel, HTML)",
+      "drop_text": "Click or drag a file to upload",
+      "upload_btn": "Upload to Knowledge Base",
+      "uploading": "Uploading...",
+      "success": "Upload successful",
+      "fail": "Upload failed"
+    },
+    "card": {
+      "processed": "Processed",
+      "file": "Source File",
+      "delete": "Delete",
+      "delete_confirm": "Delete this knowledge document?",
+      "delete_success": "Deleted successfully"
+    }
+  },
+  "chat": {
+    "title": "Support AI Assistant",
+    "subtitle": "Knowledge-grounded answers and handling guidance for support teams",
+    "empty_state": "Ask about refund rules, escalation flows, product functions, or standard replies.",
+    "placeholder": "Ask a support question, for example: How should we reply to a refund request?",
+    "send": "Send",
+    "error": "The request failed. Please try again later.",
+    "sources": "Sources",
+    "relatedSolutions": "Related Documents",
+    "citationCount": "{{count}} citations",
+    "clear": "Clear Chat",
+    "clear_confirm": "Clear all chat history? This cannot be undone.",
+    "clear_success": "Chat cleared",
+    "clear_failed": "Failed to clear chat",
+    "copy": "Copy",
+    "resend": "Resend",
+    "edit": "Edit",
+    "delete": "Delete",
+    "delete_confirm": "Delete this message?",
+    "thinking": "Thinking...",
+    "copy_success": "Copied to clipboard",
+    "copy_failed": "Failed to copy",
+    "mermaid_error": "Failed to render diagram",
+    "quick": {
+      "refund": "A user requests a refund. How should support reply and explain the timeline?",
+      "escalation": "When should the issue be escalated to tier 2 or a supervisor?",
+      "complaint": "How should support calm a customer complaining about service attitude?",
+      "activation": "A new customer cannot activate the product. How should support guide them?"
+    }
+  },
+  "solutionDetail": {
+    "back": "Back to Knowledge Base",
+    "preview": {
+      "title": "Document Preview",
+      "searchPlaceholder": "Search in document...",
+      "noResults": "No matching content found",
+      "loadMore": "Load More",
+      "emptyContent": "No document content available"
+    },
+    "chat": {
+      "title": "Document Q&A",
+      "placeholder": "Ask about this document..."
+    }
+  },
+  "capabilities": {
+    "title": "SOP and Reply Library",
+    "description": "Manage support SOPs, escalation rules, standard replies, and QA checkpoints for both AI and human agents.",
+    "add_new": "New SOP",
+    "empty_state": "No SOP items yet",
+    "empty_hint": "Add your first SOP or standard reply.",
+    "search_placeholder": "Search SOP names, descriptions, or key steps...",
+    "all_categories": "All categories",
+    "clear_filters": "Clear filters",
+    "form": {
+      "name": "SOP Name",
+      "name_placeholder": "e.g. Standard Refund Handling Flow",
+      "category": "Scenario Category",
+      "category_placeholder": "Select a scenario category",
+      "description": "Description",
+      "description_placeholder": "Describe the issue type, prerequisites, and expected outcome...",
+      "features": "Key Steps / Rules",
+      "features_placeholder": "One step or rule per line",
+      "useCases": "Trigger Scenarios",
+      "useCases_placeholder": "One scenario per line",
+      "benefits": "QA Goals / Reply Targets",
+      "benefits_placeholder": "One target or QA checkpoint per line",
+      "specs": "Structured Extra Data",
+      "specs_placeholder": "Optional JSON for field mappings or ticket params",
+      "performance": "Service Metrics",
+      "performance_placeholder": "Optional JSON for SLA, timing, or escalation thresholds",
+      "submit": "Save",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "card": {
+      "features": "Key Steps",
+      "useCases": "Trigger Scenarios",
+      "edit": "Edit",
+      "delete": "Delete",
+      "delete_confirm": "Delete this SOP?"
+    },
+    "stats": {
+      "total": "Total Items",
+      "categories": "Categories",
+      "points": "Rule Points",
+      "visible": "Visible"
+    },
+    "success": "Saved successfully",
+    "delete_success": "Deleted successfully",
+    "duplicate_error": "This name already exists. Please use a different one."
+  },
+  "drafts": {
+    "title": "Response Playbooks",
+    "subtitle": "Editable support reply drafts and handling plans generated from your knowledge base and SOPs.",
+    "new": "New Playbook",
+    "empty_title": "No playbooks yet",
+    "empty_hint": "Create a playbook for refunds, complaints, activation issues, escalation, and more.",
+    "status": {
+      "draft": "Draft",
+      "generating": "Generating",
+      "completed": "Completed"
+    },
+    "delete_success": "Draft deleted successfully",
+    "delete_failed": "Failed to delete draft",
+    "delete_confirm": "Delete draft \"{{title}}\"?",
+    "loading": "Loading playbooks..."
+  },
+  "generator": {
+    "title": "AI Response Playbook Generator",
+    "description": "Describe the support case and the system will generate standard replies, handling steps, and escalation guidance.",
+    "progress": "Completion",
+    "required_step": "Case background",
+    "optional_step": "Extra context",
+    "requirements": "Case background",
+    "requirements_placeholder": "Describe the customer issue, current sentiment, actions already taken, and the desired support outcome.\n\nExample: The customer received a damaged item and wants a refund while also complaining about logistics. Support needs a calming reply, refund explanation, and escalation guidance.",
+    "industry": "Business Line / Product Line",
+    "industry_placeholder": "e.g. Ecommerce after-sales, SaaS subscription, voice support",
+    "customer_type": "Customer Type",
+    "customer_type_placeholder": "e.g. New user, VIP, enterprise account",
+    "expected_features": "Expected output",
+    "expected_features_placeholder": "e.g. calming reply, verification checklist, timing explanation, transfer conditions, compensation guidance",
+    "additional_notes": "Additional notes",
+    "additional_notes_placeholder": "Add constraints such as regulation, risk level, budget, or special handling rules.",
+    "generate": "Generate Playbook",
+    "generating": "Generating playbook...",
+    "success": "Playbook generated successfully",
+    "requirements_error": "Please fill in the case background first",
+    "tips_title": "Tips",
+    "tips": {
+      "specific": "The more specific the case background is, the better the result fits real support work.",
+      "context": "Add customer tier, order status, and SLA constraints to tighten the reply strategy.",
+      "editable": "Generated playbooks should still be reviewed by a human before frontline use.",
+      "retry": "If the result is weak, add clearer constraints and generate again."
+    }
+  }
+}

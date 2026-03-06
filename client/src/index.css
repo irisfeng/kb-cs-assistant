@@ -1,0 +1,76 @@
+/* Import Google Fonts: Noto Serif SC + Noto Sans SC */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-neutral-200 dark:border-dark-border;
+  }
+  body {
+    @apply bg-white dark:bg-dark-bg text-neutral-800 dark:text-dark-text font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Light mode scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #f5f5f5;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d4d4d4;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a3a3a3;
+  }
+
+  /* Dark mode scrollbar - 更浅的淡灰色系 */
+  .dark ::-webkit-scrollbar-track {
+    background: #2A2A2C; /* dark-bg */
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #464648; /* dark-border */
+    border-radius: 4px;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #565658; /* 稍浅的灰色 */
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Document Preview Styles - optimized for reading */
+  .document-content {
+    @apply px-8 py-8;
+    line-height: 1.7;
+    font-size: 0.875rem;
+    color: #1A1A1A;
+  }
+
+  .dark .document-content {
+    color: #F2F2F7; /* dark-text - 更柔和的白色 */
+  }
+
+  /* Optimize headings for document reading */
+  .document-content h1:first-child,
+  .document-content h2:first-child,
+  .document-content h3:first-child {
+    margin-top: 0;
+  }
+
+  /* Improve print layout */
+  @media print {
+    .document-content {
+      @apply px-0 py-0;
+    }
+  }
+}

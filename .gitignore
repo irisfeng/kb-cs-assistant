@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Database
+server/src/db.json
+server/data/drafts.json
+server/public/files/
+server/public/images/
+server/uploads/
+
+# Temporary files
+uploads/temp_*.zip
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MinerU virtual environment
+mineru_env/
+
+# Windows reserved device names
+nul
+aux
+con
+prn
+com*
+lpt*

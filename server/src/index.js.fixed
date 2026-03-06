@@ -1,0 +1,18 @@
+// 创建发送给 FastGPT 的 Markdown - 使用绝对 URL 让 FastGPT 能显示图片
+      const baseUrl = process.env.BASE_URL || 'http://localhost:3001';
+      const fastGptMarkdown = cleanedMarkdown.replace(
+        /!\[([^\]]*)\]\((images\/[^)]+|[^)]+\.(png|jpg|jpeg|gif|webp))\)/gi,
+        (match, alt, imagePath) => {
+          const imageName = path.basename(imagePath);
+          // 使用绝对 URL，FastGPT 可以访问图片
+          const imageUrl = `${baseUrl}/images/${batchId}/${imageName}`;
+          return `![${alt}](${imageUrl})`;
+        },
+      );
+      const imageCount = (cleanedMarkdown.match(/!\[.*?\]\(.*?\.(?:png|jpg|jpeg|gif|webp).*?\)/gi) || []).length;
+      console.log(
+        `[MinerU] FastGPT markdown: ${imageCount} images with absolute URLs`,
+      );
+
+      // base64Markdown 使用带 URL 的版本
+      const base64Markdown = fastGptMarkdown;
