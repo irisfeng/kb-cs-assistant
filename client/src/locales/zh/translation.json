@@ -1,11 +1,11 @@
 {
   "app": {
     "title": "客服智能知识助手",
-    "description": "集中管理客服知识文档、SOP 规则与 AI 回复剧本，用于检索、问答和服务运营提效。",
+    "description": "集中管理客服知识文档、SOP 规则与标准回复资产，用于检索、问答和服务运营提效。",
     "nav": {
       "solutions": "知识库",
       "upload": "上传资料",
-      "capabilities": "SOP 与话术库",
+      "capabilities": "SOP 话术库",
       "generator": "AI 回复剧本"
     },
     "sidebar": {
@@ -21,9 +21,9 @@
       "english": "English"
     },
     "home": {
-      "badge": "Customer Service Copilot",
+      "badge": "客服 Copilot",
       "hero_title": "把知识、SOP 和回复策略放进一个客服工作台",
-      "hero_description": "复用现有文档解析与知识检索能力，面向客服团队统一管理 FAQ、产品说明、标准话术和 AI 处置剧本。",
+      "hero_description": "复用现有文档解析与检索能力，统一管理 FAQ、产品说明、标准话术和客服处理策略。",
       "knowledge_count": "知识文档",
       "sop_count": "SOP 条目",
       "playbook_count": "回复剧本",
@@ -32,35 +32,35 @@
       "archive_subtitle": "Knowledge Base",
       "new_solution": "新增知识文档",
       "upload_title": "上传客服资料",
-      "search_placeholder": "搜索知识文档、FAQ 或资料名...",
+      "search_placeholder": "搜索文档、FAQ 或文件名...",
       "grid_view": "网格视图",
       "list_view": "列表视图",
       "empty_title": "还没有知识文档",
-      "empty_hint": "先上传 FAQ、产品说明、售后规则或客服培训资料。",
-      "stat_documents": "知识文档",
+      "empty_hint": "先上传 FAQ、退款规则、产品手册或客服培训资料。",
+      "stat_documents": "文档数",
       "stat_filtered": "当前结果",
       "stat_assistant": "AI 助手",
       "panel_title": "客服运营焦点",
       "panel_items": {
-        "sla": "围绕时效、升级、补偿规则统一回答口径",
+        "sla": "围绕时效、升级和补偿规则保持统一口径",
         "handoff": "把机器人答不了的问题快速转人工",
         "consistency": "让多渠道客服共享同一套知识与话术"
       },
       "quick_prompts_title": "快捷提问",
-      "workflow_title": "建议接入资料",
+      "workflow_title": "推荐接入资料",
       "workflow_items": {
-        "faq": "常见问题 FAQ、退换货与退款规则",
+        "faq": "FAQ、退款、换货与售后规则",
         "product": "产品手册、操作说明、价格与活动资料",
-        "sop": "升级流程、工单规范、服务质检标准"
+        "sop": "升级流程、工单规范和质检标准"
       }
     }
   },
   "solutions": {
     "title": "知识文档",
-    "add_new": "上传知识文档",
+    "add_new": "上传文档",
     "form": {
       "title": "资料标题",
-      "title_placeholder": "例如：退款与售后服务手册",
+      "title_placeholder": "例如：退款与售后政策",
       "description": "资料说明",
       "description_placeholder": "简要说明该资料适用于哪些客服场景...",
       "document": "资料文件（支持 PDF、Word、Markdown、CSV、Excel、HTML）",
@@ -72,7 +72,7 @@
     },
     "card": {
       "processed": "已处理",
-      "file": "原始文件",
+      "file": "源文件",
       "delete": "删除",
       "delete_confirm": "确认删除这份知识文档吗？",
       "delete_success": "删除成功"
@@ -80,13 +80,13 @@
   },
   "chat": {
     "title": "客服智能助手",
-    "subtitle": "面向客服场景的知识问答与处置建议",
-    "empty_state": "可以直接问我退款规则、升级流程、产品功能或标准回复口径。",
-    "placeholder": "输入客服问题，例如“用户要求退款该怎么回复？”",
+    "subtitle": "面向客服场景的知识问答与处理建议",
+    "empty_state": "可以直接问退款规则、升级流程、产品功能或标准回复口径。",
+    "placeholder": "输入客服问题，例如：用户要求退款该怎么回复？",
     "send": "发送",
     "error": "当前请求失败，请稍后重试。",
     "sources": "引用来源",
-    "relatedSolutions": "相关知识文档",
+    "relatedSolutions": "相关文档",
     "citationCount": "{{count}} 条引用",
     "clear": "清空对话",
     "clear_confirm": "确认清空所有对话记录？此操作无法撤销。",
@@ -109,7 +109,7 @@
     }
   },
   "solutionDetail": {
-    "back": "返回知识库列表",
+    "back": "返回知识库",
     "preview": {
       "title": "文档预览",
       "searchPlaceholder": "在文档内搜索...",
@@ -124,30 +124,30 @@
   },
   "capabilities": {
     "title": "SOP 与话术库",
-    "description": "管理客服 SOP、升级规则、标准话术和质检要点，供 AI 助手与人工客服统一调用。",
+    "description": "管理客服 SOP、升级规则、标准回复和质检要点，供 AI 助手与人工客服统一调用。",
     "add_new": "新增 SOP",
     "empty_state": "还没有 SOP 条目",
-    "empty_hint": "点击上方按钮，录入你的第一条客服 SOP 或标准话术。",
+    "empty_hint": "添加第一条 SOP 或标准回复。",
     "search_placeholder": "搜索 SOP 名称、说明或关键步骤...",
     "all_categories": "全部分类",
     "clear_filters": "清空筛选",
     "form": {
       "name": "SOP 名称",
-      "name_placeholder": "例如：退款申请标准处置流程",
+      "name_placeholder": "例如：标准退款处理流程",
       "category": "场景分类",
       "category_placeholder": "请选择场景分类",
       "description": "适用说明",
-      "description_placeholder": "简要描述适用问题类型、前置条件和目标结果...",
+      "description_placeholder": "说明适用问题类型、前置条件和目标结果...",
       "features": "关键步骤 / 规则点",
       "features_placeholder": "每行一个步骤或规则点",
       "useCases": "触发场景",
       "useCases_placeholder": "每行一个典型触发场景",
-      "benefits": "质检要点 / 回复目标",
+      "benefits": "质检要点 / 服务目标",
       "benefits_placeholder": "每行一个服务目标或质检要求",
       "specs": "结构化补充信息",
-      "specs_placeholder": "JSON 格式，可选，用于记录字段映射或工单参数",
+      "specs_placeholder": "可选 JSON，用于记录字段映射或工单参数",
       "performance": "服务指标",
-      "performance_placeholder": "JSON 格式，可选，用于记录 SLA、时效或升级阈值",
+      "performance_placeholder": "可选 JSON，用于记录 SLA、时效或升级阈值",
       "submit": "保存",
       "cancel": "取消",
       "edit": "编辑",
@@ -172,10 +172,10 @@
   },
   "drafts": {
     "title": "回复剧本",
-    "subtitle": "基于知识库和 SOP 生成可编辑的客服回复草稿与处置方案。",
+    "subtitle": "基于知识库和 SOP 生成可编辑的客服回复草稿与处理方案。",
     "new": "新建剧本",
     "empty_title": "还没有回复剧本",
-    "empty_hint": "创建一个新的客服回复剧本，用于退款、投诉、激活、升级等场景。",
+    "empty_hint": "创建一个用于退款、投诉、激活或升级场景的回复剧本。",
     "status": {
       "draft": "草稿中",
       "generating": "生成中",
@@ -189,29 +189,29 @@
   "generator": {
     "title": "AI 回复剧本生成",
     "description": "输入客服问题背景，系统会结合知识库和 SOP 生成标准回复、处理步骤和升级建议。",
-    "progress": "填写进度",
+    "progress": "完成度",
     "required_step": "问题背景",
     "optional_step": "补充信息",
     "requirements": "问题背景",
-    "requirements_placeholder": "请描述用户问题、当前情绪、已发生的服务动作和希望输出的客服结果。\n\n例如：用户反馈商品签收后发现破损，希望退款并投诉物流，客服需要给出安抚话术、退款说明和升级建议。",
+    "requirements_placeholder": "请描述用户问题、当前情绪、已发生的服务动作和希望输出的客服结果。\n\n例如：用户收到破损商品，希望退款并投诉物流，客服需要给出安抚话术、退款说明和升级建议。",
     "industry": "业务线 / 产品线",
     "industry_placeholder": "例如：电商售后、SaaS 订阅、语音客服",
     "customer_type": "客户类型",
-    "customer_type_placeholder": "例如：新用户、VIP、企业客户",
-    "expected_features": "期望输出内容",
+    "customer_type_placeholder": "例如：新用户、VIP、企业账号",
+    "expected_features": "期望输出",
     "expected_features_placeholder": "例如：安抚话术、核验清单、时效说明、转人工条件、补偿建议",
     "additional_notes": "补充说明",
-    "additional_notes_placeholder": "补充预算、风险等级、监管要求或特殊限制。",
-    "generate": "生成回复剧本",
-    "generating": "正在生成回复剧本...",
-    "success": "回复剧本生成成功",
+    "additional_notes_placeholder": "补充监管要求、风险级别、预算或特殊处理规则。",
+    "generate": "生成剧本",
+    "generating": "正在生成剧本...",
+    "success": "剧本生成成功",
     "requirements_error": "请先填写问题背景",
     "tips_title": "填写建议",
     "tips": {
-      "specific": "问题背景越具体，生成结果越贴近客服实际场景。",
-      "context": "补充客户等级、订单状态和时效要求，有助于控制回复口径。",
-      "editable": "生成后的剧本建议继续人工复核，再投入一线使用。",
-      "retry": "如果结果不理想，优先补充约束条件后重新生成。"
+      "specific": "问题背景越具体，生成结果越贴近真实客服工作。",
+      "context": "补充客户等级、订单状态和 SLA 约束，可以显著提升回复质量。",
+      "editable": "生成结果仍建议人工复核后再投入一线使用。",
+      "retry": "如果结果不够理想，请补充更明确的约束再重新生成。"
     }
   }
 }

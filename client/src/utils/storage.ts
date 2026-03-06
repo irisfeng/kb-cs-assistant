@@ -6,8 +6,26 @@
 const STORAGE_KEYS = {
   GLOBAL_CHAT: 'global_chat_history',
   SOLUTION_CHAT_PREFIX: 'solution_chat_',
+  GLOBAL_SESSION: 'global_chat_session_id',
+  SOLUTION_SESSION_PREFIX: 'solution_chat_session_',
   METADATA: 'chat_metadata'
 };
+
+function buildSessionStorageKey(type: 'global' | 'solution', solutionId?: string): string {
+  return type === 'global'
+    ? STORAGE_KEYS.GLOBAL_SESSION
+    : `${STORAGE_KEYS.SOLUTION_SESSION_PREFIX}${solutionId}`;
+}
+
+function createSessionId(type: 'global' | 'solution', solutionId?: string): string {
+  const scope = type === 'global' ? 'global' : `solution-${solutionId || 'unknown'}`;
+
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${scope}-${crypto.randomUUID()}`;
+  }
+
+  return `${scope}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 /**
  * 估算 JSON 数据的字节大小（UTF-8）
@@ -77,6 +95,32 @@ export function getChatHistory(type: 'global' | 'solution', solutionId?: string)
   }
 }
 
+export function getOrCreateChatSessionId(
+  type: 'global' | 'solution',
+  solutionId?: string
+): string {
+  const storageKey = buildSessionStorageKey(type, solutionId);
+  const existingSessionId = safeGetItem(storageKey)?.trim();
+
+  if (existingSessionId) {
+    return existingSessionId;
+  }
+
+  const sessionId = createSessionId(type, solutionId);
+  safeSetItem(storageKey, sessionId);
+  return sessionId;
+}
+
+export function resetChatSessionId(
+  type: 'global' | 'solution',
+  solutionId?: string
+): string {
+  const storageKey = buildSessionStorageKey(type, solutionId);
+  const sessionId = createSessionId(type, solutionId);
+  safeSetItem(storageKey, sessionId);
+  return sessionId;
+}
+
 /**
  * 保存对话记录（带元数据更新）
  */
@@ -123,7 +167,8 @@ export function clearChatHistory(type: 'global' | 'solution', solutionId?: strin
  */
 export function removeSolutionChat(solutionId: string): boolean {
   const key = `${STORAGE_KEYS.SOLUTION_CHAT_PREFIX}${solutionId}`;
-  const success = safeRemoveItem(key);
+  const sessionKey = buildSessionStorageKey('solution', solutionId);
+  const success = safeRemoveItem(key) && safeRemoveItem(sessionKey);
 
   if (success) {
     // 更新元数据

@@ -1,7 +1,7 @@
 {
   "name": "kb-server",
   "version": "1.0.0",
-  "description": "Backend for Knowledge Base Solution Library",
+  "description": "Backend for Customer Service Knowledge Assistant",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

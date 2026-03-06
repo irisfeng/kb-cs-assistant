@@ -25,13 +25,16 @@ import { useToast } from './contexts/ToastContext';
 import {
   clearChatHistory,
   getChatHistory,
+  getOrCreateChatSessionId,
   removeSolutionChat,
+  resetChatSessionId,
   saveChatHistory,
 } from './utils/storage';
 import type { ChatMessage, Solution, ViewMode } from './types/solution';
 import type { ProductCapability } from './types/capability';
 
 const ITEMS_PER_PAGE = 12;
+type UploadStatus = 'idle' | 'queued' | 'processing' | 'success' | 'failed';
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -45,6 +48,8 @@ function App() {
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
+  const [uploadStatusMessage, setUploadStatusMessage] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,6 +61,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [globalSessionId, setGlobalSessionId] = useState(() => getOrCreateChatSessionId('global'));
 
   useEffect(() => {
     const savedHistory = getChatHistory('global');
@@ -136,6 +142,7 @@ function App() {
 
     if (clearChatHistory('global')) {
       setMessages([]);
+      setGlobalSessionId(resetChatSessionId('global'));
       showSuccess(t('chat.clear_success'));
       return;
     }
@@ -167,6 +174,10 @@ function App() {
 
     setUploading(true);
     setUploadProgress(0);
+    setUploadStatus('queued');
+    setUploadStatusMessage(
+      i18n.language === 'zh' ? '文件已进入上传队列，正在发送到服务端。' : 'The file has entered the upload queue.',
+    );
 
     const formData = new FormData();
     formData.append('file', file);
@@ -178,21 +189,48 @@ function App() {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
-            setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(progress);
+            if (progress >= 100) {
+              setUploadStatus('processing');
+              setUploadStatusMessage(
+                i18n.language === 'zh'
+                  ? '文件上传完成，正在解析内容并写入知识库。'
+                  : 'Upload complete. Parsing and indexing the document now.',
+              );
+            }
           }
         },
       });
 
+      setUploadStatus('success');
+      setUploadStatusMessage(
+        i18n.language === 'zh'
+          ? '资料已成功入库，可以开始检索和问答。'
+          : 'The document was indexed successfully and is ready for Q&A.',
+      );
+      setUploading(false);
       setTitle('');
       setDescription('');
       setFile(null);
-      setUploadProgress(0);
-      setShowUploadModal(false);
       showSuccess(t('solutions.form.success'));
       await fetchSolutions();
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+      setUploadProgress(0);
+      setShowUploadModal(false);
+      setUploadStatus('idle');
+      setUploadStatusMessage('');
     } catch (error) {
       console.error('Upload failed', error);
       setUploadProgress(0);
+      setUploadStatus('failed');
+      setUploadStatusMessage(
+        axios.isAxiosError(error) && error.response?.data?.error
+          ? error.response.data.error
+          : i18n.language === 'zh'
+            ? '上传失败，请检查文件内容或稍后重试。'
+            : 'Upload failed. Please retry in a moment.',
+      );
       showError(t('solutions.form.fail'));
     } finally {
       setUploading(false);
@@ -214,7 +252,7 @@ function App() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nextMessages }),
+        body: JSON.stringify({ messages: nextMessages, sessionId: globalSessionId }),
       });
 
       if (!response.ok) {
@@ -652,6 +690,8 @@ function App() {
         file={file}
         uploading={uploading}
         uploadProgress={uploadProgress}
+        uploadStatus={uploadStatus}
+        uploadStatusMessage={uploadStatusMessage}
         onTitleChange={setTitle}
         onDescriptionChange={setDescription}
         onFileChange={setFile}

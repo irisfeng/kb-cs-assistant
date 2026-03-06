@@ -38,6 +38,12 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const upload = multer({ dest: "uploads/" });
+const LEGACY_DRAFTS_ENABLED = process.env.ENABLE_LEGACY_DRAFTS === "true";
+const LEGACY_DRAFTS_DISABLED_RESPONSE = {
+  error:
+    "Legacy draft and PPT endpoints are disabled in the customer service knowledge system.",
+  code: "LEGACY_FEATURE_DISABLED",
+};
 
 /**
  * Upload image to FastGPT file system and get fileId
@@ -237,19 +243,109 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const GLOBAL_CUSTOMER_SERVICE_PROMPT = `你是“客服智能知识助手”，服务对象是一线客服、售后支持和客服主管。
+const SUPPORT_RESPONSE_MARKDOWN_TEMPLATE = [
+  "Use this markdown structure exactly:",
+  "## 建议回复",
+  "Give the recommended customer-facing reply in 2-4 concise bullet points.",
+  "## 处理步骤",
+  "List the operational steps the support agent should follow.",
+  "## 核验要点",
+  "List the information the support agent must verify before final action.",
+  "## 升级建议",
+  'If escalation is not required, explicitly write "当前无需升级".',
+  "## 引用依据",
+  'Summarize the supporting evidence. If evidence is insufficient, explicitly write "当前知识库未提供足够依据，请人工复核。".',
+].join("\n");
 
-回答规则：
-1. 优先基于知识库引用内容回答，不要编造政策、时效、补偿或流程。
-2. 如果知识库证据不足，明确说明“当前知识库未提供足够依据”，并建议人工核实。
-3. 回答尽量面向客服执行，优先给出：
-   - 建议回复口径
-   - 处理步骤
-   - 需要核验的信息
-   - 是否需要升级或转人工
-4. 涉及退款、补偿、投诉、账号安全、隐私合规等高风险事项时，要提醒按公司规则复核。
-5. 输出保持简洁、专业、可直接给客服使用，避免泛泛而谈。
-6. 如果用户的问题明显不属于客服知识场景，也可以正常回答，但要优先保持知识助手语气。`;
+const GLOBAL_CUSTOMER_SERVICE_PROMPT = [
+  "You are a customer service knowledge assistant for frontline support agents.",
+  "Always ground the answer in the uploaded knowledge base and SOP rules.",
+  "Never invent policy, timing, compensation, or risk decisions.",
+  "If evidence is weak or missing, say the current knowledge base is insufficient and recommend manual review.",
+  "Respond in the same language as the user unless the user asks for a different language.",
+  "Keep the answer concise, actionable, and suitable for direct operational use.",
+  "For refunds, complaints, account security, privacy, compensation, and escalation scenarios, add a clear risk reminder when needed.",
+  SUPPORT_RESPONSE_MARKDOWN_TEMPLATE,
+].join("\n\n");
+
+function generateRequestId(prefix = "req") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logEvent(level, event, details = {}) {
+  const payload = {
+    level,
+    event,
+    timestamp: new Date().toISOString(),
+    ...details,
+  };
+  const line = JSON.stringify(payload);
+
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+
+  if (level === "warn") {
+    console.warn(line);
+    return;
+  }
+
+  console.log(line);
+}
+
+function getRequestContext(req, extra = {}) {
+  return {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.path,
+    ...extra,
+  };
+}
+
+function sendApiError(res, { status = 500, code, message, requestId, details }) {
+  return res.status(status).json({
+    error: message,
+    code,
+    requestId,
+    ...(details ? { details } : {}),
+  });
+}
+
+function writeSseData(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function writeSseError(res, { code, message, requestId, details }) {
+  writeSseData(res, {
+    error: message,
+    code,
+    requestId,
+    ...(details ? { details } : {}),
+  });
+}
+
+app.use((req, res, next) => {
+  req.requestId = generateRequestId();
+  req.requestStartedAt = Date.now();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+
+function buildSolutionScopePrompt(solution) {
+  return [
+    `You are the document-scoped assistant for "${solution.title}".`,
+    `Only answer with information grounded in the document "${solution.fileName}".`,
+    `Document title: ${solution.title}`,
+    `Document description: ${solution.description || "No description provided."}`,
+    `Collection ID: ${solution.collectionId}`,
+    `Ignore any citation or retrieval result whose source file is not "${solution.fileName}".`,
+    `If no matching evidence from "${solution.fileName}" is found, explicitly say that this document does not provide enough evidence and recommend manual review.`,
+    "Do not cite or summarize other documents.",
+    "Respond in the same language as the user.",
+    SUPPORT_RESPONSE_MARKDOWN_TEMPLATE,
+  ].join("\n\n");
+}
 
 // Static files serving (for images and original files)
 app.use("/images", express.static(path.join(__dirname, "../public/images")));
@@ -268,10 +364,47 @@ const capabilitiesDb = await JSONFilePreset(
 
 // Draft solutions database setup
 const defaultDrafts = { drafts: [] };
-const draftsDb = await JSONFilePreset(
-  path.join(__dirname, "../data/drafts.json"),
-  defaultDrafts,
-);
+const draftsDb = LEGACY_DRAFTS_ENABLED
+  ? await JSONFilePreset(path.join(__dirname, "../data/drafts.json"), defaultDrafts)
+  : null;
+
+function sendLegacyFeatureDisabled(res) {
+  return res.status(410).json(LEGACY_DRAFTS_DISABLED_RESPONSE);
+}
+
+function resolveChatSessionId(sessionId, fallbackScope) {
+  if (typeof sessionId === "string") {
+    const normalized = sessionId.trim().slice(0, 120);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return `${fallbackScope}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getLegacyPptTemplates() {
+  const templatesDir = path.join(__dirname, "../public/templates");
+  if (!fs.existsSync(templatesDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(templatesDir)
+    .filter((fileName) => /\.(ppt|pptx|potx)$/i.test(fileName))
+    .map((fileName) => ({
+      id: fileName,
+      name: fileName,
+    }));
+}
+
+if (!LEGACY_DRAFTS_ENABLED) {
+  app.use("/api/drafts", (_req, res) => sendLegacyFeatureDisabled(res));
+  app.use("/api/ppt", (_req, res) => sendLegacyFeatureDisabled(res));
+  app.post("/api/test/image-generation", (_req, res) =>
+    sendLegacyFeatureDisabled(res),
+  );
+}
 
 // ==================== Markdown Cleaning Utility ====================
 
@@ -897,7 +1030,17 @@ app.get("/api/solutions/:id/preview", async (req, res) => {
 // Solution-specific chat - Streaming support
 app.post("/api/solutions/:id/chat", async (req, res) => {
   const { id } = req.params;
-  const { messages } = req.body;
+  const { messages = [], sessionId } = req.body;
+  const resolvedSessionId = resolveChatSessionId(sessionId, `solution-${id}`);
+  logEvent(
+    "info",
+    "solution_chat.started",
+    getRequestContext(req, {
+      solutionId: id,
+      sessionId: resolvedSessionId,
+      messageCount: Array.isArray(messages) ? messages.length : 0,
+    }),
+  );
 
   // Set headers for SSE
   res.setHeader("Content-Type", "text/event-stream");
@@ -909,7 +1052,11 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
     const solution = db.data.solutions.find((s) => s.id === id);
 
     if (!solution) {
-      res.write(`data: ${JSON.stringify({ error: "Solution not found" })}\n\n`);
+      writeSseError(res, {
+        code: "SOLUTION_NOT_FOUND",
+        message: "Solution not found",
+        requestId: req.requestId,
+      });
       return res.end();
     }
 
@@ -954,12 +1101,14 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
       "[SolutionChat] Sending variables:",
       JSON.stringify({ collectionId: solution.collectionId }),
     );
+    console.log("[SolutionChat] Session ID:", resolvedSessionId);
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
 
     const requestBody = {
       model: "solution-kb-chat",
+      chatId: resolvedSessionId,
       stream: true,
       detail: true,
       // Pass collectionId as variable to workflow (if configured)
@@ -1187,13 +1336,37 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
     });
 
     response.data.on("error", (err) => {
-      console.error("Stream error:", err);
-      res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
+      logEvent(
+        "error",
+        "solution_chat.stream_failed",
+        getRequestContext(req, {
+          solutionId: id,
+          sessionId: resolvedSessionId,
+          message: err.message,
+        }),
+      );
+      writeSseError(res, {
+        code: "CHAT_STREAM_FAILED",
+        message: "Stream error",
+        requestId: req.requestId,
+      });
       res.end();
     });
   } catch (error) {
-    console.error("Solution chat error:", error.message);
-    res.write(`data: ${JSON.stringify({ error: "Chat failed" })}\n\n`);
+    logEvent(
+      "error",
+      "solution_chat.failed",
+      getRequestContext(req, {
+        solutionId: id,
+        sessionId: resolvedSessionId,
+        message: error.message,
+      }),
+    );
+    writeSseError(res, {
+      code: "CHAT_REQUEST_FAILED",
+      message: "Chat failed",
+      requestId: req.requestId,
+    });
     res.end();
   }
 });
@@ -1354,7 +1527,16 @@ app.delete("/api/solutions/:id", async (req, res) => {
 
 // Upload and Process Solution
 app.post("/api/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  if (!req.file) {
+    logEvent("warn", "upload.validation_failed", getRequestContext(req));
+    return sendApiError(res, {
+      status: 400,
+      code: "UPLOAD_FILE_REQUIRED",
+      message: "No file uploaded",
+      requestId: req.requestId,
+      details: { uploadStatus: "failed" },
+    });
+  }
 
   const { title, description } = req.body;
   const filePath = req.file.path;
@@ -1365,12 +1547,19 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
   // 生成唯一文件 ID
   const fileId = `file_${Date.now()}`;
+  let originalFilePath = null;
 
   try {
     let textContent = "";
     let mineruResult = null; // 在外层声明，确保作用域正确
 
     console.log(`Processing file: ${originalName} (${fileExt})`);
+    console.log(`[Upload] Status -> queued: ${originalName}`);
+    logEvent(
+      "info",
+      "upload.started",
+      getRequestContext(req, { fileName: originalName, fileExt }),
+    );
 
     // ✅ 保存原始文件到 static/files 目录
     const filesDir = path.join(__dirname, "../public/files");
@@ -1378,7 +1567,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       fs.mkdirSync(filesDir, { recursive: true });
     }
     const originalFileName = `${fileId}${fileExt}`;
-    const originalFilePath = path.join(filesDir, originalFileName);
+    originalFilePath = path.join(filesDir, originalFileName);
     fs.copyFileSync(filePath, originalFilePath);
     console.log(`[Upload] Original file saved to: /files/${originalFileName}`);
 
@@ -1400,11 +1589,25 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     ) {
       // 使用 MinerU Online API 解析文档（高质量图文分离）
       if (!isMinerUEnabled) {
-        return res.status(400).json({
-          error:
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        if (originalFilePath && fs.existsSync(originalFilePath)) {
+          fs.unlinkSync(originalFilePath);
+        }
+        logEvent(
+          "warn",
+          "upload.mineru_not_configured",
+          getRequestContext(req, { fileName: originalName }),
+        );
+        return sendApiError(res, {
+          status: 400,
+          code: "MINERU_NOT_CONFIGURED",
+          message:
             "MinerU API Token not configured. Please add MINERU_API_TOKEN to .env file.",
+          requestId: req.requestId,
+          details: { uploadStatus: "failed" },
         });
       }
+      console.log(`[Upload] Status -> processing: ${originalName}`);
       mineruResult = await parseWithMinerU(filePath, originalName);
       console.log(
         "[Debug] mineruResult keys:",
@@ -1444,6 +1647,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     }
 
     console.log(`Extracted text length: ${textContent.length}`);
+    console.log(`[Upload] Status -> processing: importing ${originalName} into FastGPT`);
 
     // Use the processed text for FastGPT (with dataset/{fileId} image paths)
     // mineruResult.text contains the new format with uploaded image fileIds
@@ -1547,6 +1751,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       localMarkdown: mineruResult?.localMarkdown || "",
       batchId: mineruResult?.batchId || "",
       imageCount: mineruResult?.imageCount || 0,
+      uploadStatus: "success",
       createdAt: new Date().toISOString(),
     };
 
@@ -1555,7 +1760,21 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     // Cleanup local file
     fs.unlinkSync(filePath);
 
-    res.json(newSolution);
+    console.log(`[Upload] Status -> success: ${originalName}`);
+    logEvent(
+      "info",
+      "upload.completed",
+      getRequestContext(req, {
+        fileName: originalName,
+        collectionId,
+        durationMs: Date.now() - req.requestStartedAt,
+      }),
+    );
+    res.json({
+      ...newSolution,
+      uploadStatus: "success",
+      requestId: req.requestId,
+    });
   } catch (error) {
     console.error("Error processing solution:", error.message);
     console.error("Error stack:", error.stack);
@@ -1568,7 +1787,26 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     }
     // Cleanup local file on error
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    res.status(500).json({ error: "Failed to process solution" });
+    if (originalFilePath && fs.existsSync(originalFilePath)) {
+      fs.unlinkSync(originalFilePath);
+    }
+    console.log(`[Upload] Status -> failed: ${originalName}`);
+    logEvent(
+      "error",
+      "upload.failed",
+      getRequestContext(req, {
+        fileName: originalName,
+        message: error.message,
+        durationMs: Date.now() - req.requestStartedAt,
+      }),
+    );
+    sendApiError(res, {
+      status: 500,
+      code: "UPLOAD_PROCESSING_FAILED",
+      message: "Failed to process solution",
+      requestId: req.requestId,
+      details: { uploadStatus: "failed" },
+    });
   }
 });
 
@@ -1580,7 +1818,16 @@ async function findSolutionByCollectionId(collectionId) {
 
 // Chat Interface - Streaming support
 app.post("/api/chat", async (req, res) => {
-  const { messages } = req.body;
+  const { messages = [], sessionId } = req.body;
+  const resolvedSessionId = resolveChatSessionId(sessionId, "global");
+  logEvent(
+    "info",
+    "global_chat.started",
+    getRequestContext(req, {
+      sessionId: resolvedSessionId,
+      messageCount: Array.isArray(messages) ? messages.length : 0,
+    }),
+  );
 
   // Set headers for SSE
   res.setHeader("Content-Type", "text/event-stream");
@@ -1592,6 +1839,7 @@ app.post("/api/chat", async (req, res) => {
       "[Debug GlobalChat] Using FASTGPT_WORKFLOW_KEY:",
       process.env.FASTGPT_WORKFLOW_KEY?.substring(0, 20) + "...",
     );
+    console.log("[Debug GlobalChat] Session ID:", resolvedSessionId);
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
@@ -1609,6 +1857,7 @@ app.post("/api/chat", async (req, res) => {
       `${process.env.FASTGPT_BASE_URL}/v1/chat/completions`,
       {
         model: "solution-kb-chat",
+        chatId: resolvedSessionId,
         stream: true, // Enable streaming
         detail: true,
         messages: [{ role: "system", content: GLOBAL_CUSTOMER_SERVICE_PROMPT }, ...messages],
@@ -1790,16 +2039,36 @@ app.post("/api/chat", async (req, res) => {
     });
 
     response.data.on("error", (err) => {
-      console.error("Stream error:", err);
-      res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
+      logEvent(
+        "error",
+        "global_chat.stream_failed",
+        getRequestContext(req, {
+          sessionId: resolvedSessionId,
+          message: err.message,
+        }),
+      );
+      writeSseError(res, {
+        code: "CHAT_STREAM_FAILED",
+        message: "Stream error",
+        requestId: req.requestId,
+      });
       res.end();
     });
   } catch (error) {
-    console.error(
-      "Chat error:",
-      error.response ? error.response.data : error.message,
+    logEvent(
+      "error",
+      "global_chat.failed",
+      getRequestContext(req, {
+        sessionId: resolvedSessionId,
+        message:
+          error.response ? JSON.stringify(error.response.data) : error.message,
+      }),
     );
-    res.write(`data: ${JSON.stringify({ error: "Chat failed" })}\n\n`);
+    writeSseError(res, {
+      code: "CHAT_REQUEST_FAILED",
+      message: "Chat failed",
+      requestId: req.requestId,
+    });
     res.end();
   }
 });
@@ -2227,8 +2496,9 @@ async function getReferenceSolutions(industry, customerType) {
   }
 }
 
-// POST /api/drafts/generate - Generate solution using FastGPT Workflow
-app.post("/api/drafts/generate", async (req, res) => {
+if (LEGACY_DRAFTS_ENABLED) {
+  // POST /api/drafts/generate - Generate solution using FastGPT Workflow
+  app.post("/api/drafts/generate", async (req, res) => {
   try {
     const {
       requirements,
@@ -2874,7 +3144,7 @@ ${i + 1}. ${ref.title}（${ref.category}）
       .status(500)
       .json({ error: "Failed to generate solution", details: error.message });
   }
-});
+  });
 
 // GET /api/drafts - Get all draft solutions
 app.get("/api/drafts", async (req, res) => {
@@ -4807,19 +5077,19 @@ app.get("/api/drafts/:id/export-ppt", async (req, res) => {
   }
 });
 
-// GET /api/ppt/templates - Get available PPT templates
-app.get("/api/ppt/templates", (req, res) => {
+  // GET /api/ppt/templates - Get available PPT templates
+  app.get("/api/ppt/templates", (req, res) => {
   try {
-    const templates = getTemplates();
+    const templates = getLegacyPptTemplates();
     res.json(templates);
   } catch (error) {
     console.error("Get templates error:", error.message);
     res.status(500).json({ error: "Failed to get templates" });
   }
-});
+  });
 
-// GET /api/ppt/styles - Get available PPT styles for styled generation
-app.get("/api/ppt/styles", (req, res) => {
+  // GET /api/ppt/styles - Get available PPT styles for styled generation
+  app.get("/api/ppt/styles", (req, res) => {
   try {
     const styles = Object.entries(SLIDE_STYLES).map(([key, config]) => ({
       key,
@@ -4833,10 +5103,10 @@ app.get("/api/ppt/styles", (req, res) => {
     console.error("Get styles error:", error.message);
     res.status(500).json({ error: "Failed to get styles" });
   }
-});
+  });
 
-// POST /api/test/image-generation - Test AIHubMix image generation
-app.post("/api/test/image-generation", async (req, res) => {
+  // POST /api/test/image-generation - Test AIHubMix image generation
+  app.post("/api/test/image-generation", async (req, res) => {
   try {
     const {
       prompt = 'A professional business presentation slide with title "Welcome" and clean layout',
@@ -4895,8 +5165,9 @@ app.post("/api/test/image-generation", async (req, res) => {
       error: error.message,
       details: error.response?.data,
     });
-  }
-});
+    }
+  });
+}
 
 const PORT = process.env.PORT || 3001;
 const HOST = "0.0.0.0"; // 允许内网访问
@@ -4913,6 +5184,9 @@ function getLocalIP() {
   }
   return "localhost";
 }
+
+const legacyDraftsStatusMessage = `[Legacy] Draft/PPT endpoints ${LEGACY_DRAFTS_ENABLED ? "enabled" : "disabled"} (set ENABLE_LEGACY_DRAFTS=true to enable)`;
+console.log(legacyDraftsStatusMessage);
 
 app.listen(PORT, HOST, () => {
   const localIP = getLocalIP();

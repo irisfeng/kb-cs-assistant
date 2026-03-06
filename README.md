@@ -40,6 +40,7 @@ Recommended values:
 - `FASTGPT_API_KEY=...`
 - `FASTGPT_APP_KEY=...`
 - `FASTGPT_WORKFLOW_KEY=...`
+- `ENABLE_LEGACY_DRAFTS=false` to keep old draft/PPT endpoints disabled in the main customer-service path
 
 ## Frontend Setup
 
@@ -76,5 +77,5 @@ Open `http://localhost:5173`.
 ## Notes
 
 - The backend still lives mostly in `server/src/index.js`.
-- Some legacy draft/PPT generation code still exists in the backend, but it is no longer part of the primary product path.
+- Some legacy draft/PPT generation code still exists in the backend and is now disabled by default unless `ENABLE_LEGACY_DRAFTS=true`.
 - This project focuses on customer service knowledge retrieval, SOP execution, and AI response assistance.
