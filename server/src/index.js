@@ -347,6 +347,153 @@ function buildSolutionScopePrompt(solution) {
   ].join("\n\n");
 }
 
+function normalizeComparableText(value = "") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/\.(txt|md)$/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function getSolutionSourceCandidates(solution) {
+  const values = [
+    solution?.fileName,
+    solution?.title,
+    solution?.fileName ? `${solution.fileName}.txt` : "",
+  ];
+
+  return values
+    .map((value) => normalizeComparableText(value))
+    .filter(Boolean);
+}
+
+function getQuoteSourceCandidates(quote) {
+  const values = [
+    quote?.sourceName,
+    quote?.source,
+    quote?.fileName,
+    quote?.sourceFileName,
+    quote?.metadata?.sourceName,
+    quote?.metadata?.source,
+    quote?.collectionName,
+  ];
+
+  return values
+    .map((value) => normalizeComparableText(value))
+    .filter(Boolean);
+}
+
+function doesQuoteMatchSolution(quote, solution) {
+  if (!quote || !solution) {
+    return false;
+  }
+
+  if (quote.collectionId && solution.collectionId && quote.collectionId === solution.collectionId) {
+    return true;
+  }
+
+  const solutionCandidates = getSolutionSourceCandidates(solution);
+  const quoteCandidates = getQuoteSourceCandidates(quote);
+
+  return quoteCandidates.some((quoteCandidate) =>
+    solutionCandidates.some(
+      (solutionCandidate) =>
+        quoteCandidate === solutionCandidate ||
+        quoteCandidate.includes(solutionCandidate) ||
+        solutionCandidate.includes(quoteCandidate),
+    ),
+  );
+}
+
+function findSolutionForQuote(quote, solutions = []) {
+  if (!quote) {
+    return null;
+  }
+
+  if (quote.collectionId) {
+    const byCollection = solutions.find(
+      (solution) => solution.collectionId && solution.collectionId === quote.collectionId,
+    );
+    if (byCollection) {
+      return byCollection;
+    }
+  }
+
+  return (
+    solutions.find((solution) => doesQuoteMatchSolution(quote, solution)) ||
+    null
+  );
+}
+
+function createCitationPayload(quote, solution = null) {
+  const content =
+    quote?.q ||
+    quote?.content ||
+    quote?.sourceText ||
+    quote?.a ||
+    quote?.answer ||
+    "";
+  const answer =
+    quote?.a ||
+    quote?.answer ||
+    quote?.metadata?.answer ||
+    "";
+  const sourceName =
+    quote?.sourceName ||
+    quote?.source ||
+    quote?.fileName ||
+    quote?.sourceFileName ||
+    quote?.metadata?.sourceName ||
+    quote?.metadata?.source ||
+    solution?.fileName ||
+    "";
+
+  return {
+    id: quote?.id || `${solution?.id || "quote"}-${Math.random().toString(36).slice(2, 8)}`,
+    q: content,
+    a: answer,
+    score: typeof quote?.score === "number" ? quote.score : undefined,
+    source: sourceName,
+    sourceName,
+    fileName: solution?.fileName || sourceName,
+    collectionId: quote?.collectionId || solution?.collectionId,
+    chunkIndex: quote?.chunkIndex ?? quote?.metadata?.chunkIndex,
+    ...(solution
+      ? {
+          solutionId: solution.id,
+          solutionTitle: solution.title,
+        }
+      : {}),
+  };
+}
+
+function dedupeAndSortCitations(citations = [], limit = 6) {
+  const seen = new Set();
+
+  const deduped = citations.filter((citation) => {
+    const key = [
+      citation.collectionId || "",
+      normalizeComparableText(citation.sourceName || citation.source || ""),
+      normalizeComparableText(citation.q || ""),
+    ].join("::");
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+
+  return deduped
+    .sort((left, right) => {
+      const leftScore = typeof left.score === "number" ? left.score : -1;
+      const rightScore = typeof right.score === "number" ? right.score : -1;
+      return rightScore - leftScore;
+    })
+    .slice(0, limit);
+}
+
 // Static files serving (for images and original files)
 app.use("/images", express.static(path.join(__dirname, "../public/images")));
 app.use("/files", express.static(path.join(__dirname, "../public/files")));
@@ -1092,6 +1239,8 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
 
 请严格遵守这些约束。`;
 
+    const scopedPrompt = buildSolutionScopePrompt(solution);
+
     console.log(
       "[SolutionChat] Using prompt-based filtering for solution:",
       solution.title,
@@ -1114,8 +1263,9 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
       // Pass collectionId as variable to workflow (if configured)
       variables: {
         collectionId: solution.collectionId,
+        sourceName: solution.fileName,
       },
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      messages: [{ role: "system", content: scopedPrompt }, ...messages],
     };
     console.log(
       "[SolutionChat] Request body keys:",
@@ -1289,41 +1439,39 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
             "items",
           );
           for (const quote of nodeResponse.quoteList) {
+            const matchesCurrentSolution = doesQuoteMatchSolution(quote, solution);
             console.log(
               "[Debug SolutionChat] Quote collectionId:",
               quote.collectionId,
               "| Match:",
-              quote.collectionId === solution.collectionId,
+              matchesCurrentSolution,
             );
-            if (quote.collectionId === solution.collectionId) {
-              citations.push({
-                id: quote.id,
-                q: quote.q,
-                a: quote.a,
-                score: quote.score,
-              });
+            if (matchesCurrentSolution) {
+              citations.push(createCitationPayload(quote, solution));
             }
           }
         }
       }
 
+      const normalizedCitations = dedupeAndSortCitations(citations, 8);
+
       console.log(
         "[Debug SolutionChat] Total citations found:",
-        citations.length,
+        normalizedCitations.length,
         "out of",
         allNodeResponses
           .filter((r) => r.quoteList)
           .reduce((sum, r) => sum + r.quoteList?.length || 0, 0),
       );
 
-      if (citations.length > 0) {
+      if (normalizedCitations.length > 0) {
         const citationData = {
-          citations,
+          citations: normalizedCitations,
           isComplete: true,
         };
         console.log(
           "[Debug SolutionChat] Sending citation data, citations count:",
-          citations.length,
+          normalizedCitations.length,
         );
         res.write(`data: ${JSON.stringify(citationData)}\n\n`);
         // Flush to ensure data is sent immediately
@@ -1983,6 +2131,7 @@ app.post("/api/chat", async (req, res) => {
       // Extract citations from collected node responses
       const citations = [];
       const solutionIds = new Set();
+      const solutions = db.data.solutions || [];
 
       for (const nodeResponse of allNodeResponses) {
         // Handle different node response formats
@@ -1990,38 +2139,37 @@ app.post("/api/chat", async (req, res) => {
           // Knowledge base search node format
           console.log("[Debug GlobalChat] Found quoteList in nodeResponse");
           for (const quote of nodeResponse.quoteList) {
-            const solution = await findSolutionByCollectionId(
-              quote.collectionId,
-            );
+            const solution =
+              findSolutionForQuote(quote, solutions) ||
+              (quote.collectionId
+                ? await findSolutionByCollectionId(quote.collectionId)
+                : null);
             if (solution) {
-              citations.push({
-                id: quote.id,
-                q: quote.q,
-                a: quote.a,
-                score: quote.score,
-                solutionId: solution.id,
-                solutionTitle: solution.title,
-              });
+              citations.push(createCitationPayload(quote, solution));
               solutionIds.add(solution.id);
+            } else {
+              citations.push(createCitationPayload(quote));
             }
           }
         }
       }
 
+      const normalizedCitations = dedupeAndSortCitations(citations, 8);
+
       console.log(
         "[Debug GlobalChat] Total citations found:",
-        citations.length,
+        normalizedCitations.length,
       );
 
-      if (citations.length > 0) {
+      if (normalizedCitations.length > 0) {
         const citationData = {
-          citations,
+          citations: normalizedCitations,
           relatedSolutions: Array.from(solutionIds),
           isComplete: true,
         };
         console.log(
           "[Debug GlobalChat] Sending citation data, citations count:",
-          citations.length,
+          normalizedCitations.length,
         );
         const citationJson = JSON.stringify(citationData);
         console.log(

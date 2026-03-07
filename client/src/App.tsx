@@ -79,6 +79,14 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const solutionId = new URLSearchParams(window.location.search).get('solution');
+    if (solutionId) {
+      setSelectedSolutionId(solutionId);
+      setView('solution-detail');
+    }
+  }, []);
+
+  useEffect(() => {
     if (view === 'upload') {
       setShowUploadModal(true);
       setView('solutions');
@@ -125,14 +133,32 @@ function App() {
     }
   };
 
+  const syncSolutionUrl = (id: string | null) => {
+    const nextUrl = new URL(window.location.href);
+    if (id) {
+      nextUrl.searchParams.set('solution', id);
+    } else {
+      nextUrl.searchParams.delete('solution');
+    }
+    window.history.replaceState({}, '', nextUrl);
+  };
+
   const handleSolutionClick = (id: string) => {
     setSelectedSolutionId(id);
     setView('solution-detail');
+    syncSolutionUrl(id);
+  };
+
+  const handleHomeSolutionClick = (id: string) => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('solution', id);
+    window.open(nextUrl.toString(), '_blank', 'noopener,noreferrer');
   };
 
   const handleBackFromDetail = () => {
     setSelectedSolutionId(null);
     setView('solutions');
+    syncSolutionUrl(null);
   };
 
   const handleClearGlobalChat = () => {
@@ -420,8 +446,8 @@ function App() {
                   </p>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-4">
-                    <div className="rounded-3xl bg-neutral-950 px-5 py-4 text-white shadow-xl shadow-neutral-950/10 dark:bg-white dark:text-neutral-950">
-                      <p className="text-xs uppercase tracking-[0.25em] text-white/60 dark:text-neutral-500">
+                    <div className="rounded-3xl border border-amber-200/70 bg-gradient-to-br from-amber-400 via-amber-300 to-orange-200 px-5 py-4 text-amber-950 shadow-lg shadow-amber-500/10 dark:border-amber-900/50 dark:bg-white dark:text-neutral-950">
+                      <p className="text-xs uppercase tracking-[0.25em] text-amber-950/60 dark:text-neutral-500">
                         {t('app.home.knowledge_count')}
                       </p>
                       <p className="mt-3 text-3xl font-semibold">{solutions.length}</p>
@@ -496,7 +522,7 @@ function App() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => setShowUploadModal(true)}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 dark:bg-amber-500 dark:text-neutral-950 dark:hover:bg-amber-400"
+                        className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2.5 text-sm font-medium text-white transition hover:from-amber-600 hover:to-orange-600 dark:bg-amber-500 dark:text-neutral-950 dark:hover:bg-amber-400"
                       >
                         <Plus size={16} />
                         {t('app.home.new_solution')}
@@ -581,7 +607,7 @@ function App() {
                               key={solution.id}
                               solution={solution}
                               onDelete={handleDelete}
-                              onClick={handleSolutionClick}
+                              onClick={handleHomeSolutionClick}
                               numeral={String(getRomanNumeral(startIndex + index))}
                               index={startIndex + index}
                               viewMode={viewMode}

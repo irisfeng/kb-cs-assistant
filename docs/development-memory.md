@@ -63,3 +63,56 @@
 - P0-06: normalize error codes and structured logs.
 - P1-05: clean legacy sample data and terminology in locale/content files.
 - P1-06: build the five customer-service acceptance scenarios for regression.
+
+### Additional Planning
+- Added the deployment workflow draft in [docs/DEPLOYMENT-PIPELINE-PLAN.md](C:/Users/tonif/Documents/trae_projects/kb-cs-assistant/docs/DEPLOYMENT-PIPELINE-PLAN.md).
+- Defined the recommended environment split as `preview` on Vercel + Neon, `staging` on Alibaba Cloud, and `production` on Alibaba Cloud.
+- Defined the recommended Git branch mapping as `feature/*` -> preview, `develop` -> staging, and `main` -> production.
+- Defined CI/CD workflow responsibilities for `ci.yml`, `preview.yml`, `staging.yml`, and `production.yml`.
+- Defined release checks for migration, smoke testing, and rollback preparation.
+
+### Additional Verification
+- Documentation-only planning update; no extra build step was required.
+
+### Additional Next Steps
+- Create GitHub Actions workflow files based on the deployment pipeline plan.
+- Define environment-specific variable groups and secret naming conventions.
+- Convert the release checklist into an executable staging and production SOP.
+
+### Documentation Update
+- Translated [docs/DEPLOYMENT-PIPELINE-PLAN.md](C:/Users/tonif/Documents/trae_projects/kb-cs-assistant/docs/DEPLOYMENT-PIPELINE-PLAN.md) into Chinese so the deployment workflow can be reviewed directly by the product and delivery team.
+
+### Documentation Verification
+- Confirmed the deployment pipeline document is now fully available in Chinese.
+
+### Lean Delivery Planning
+- Added [docs/LEAN-DELIVERY-PATH.md](C:/Users/tonif/Documents/trae_projects/kb-cs-assistant/docs/LEAN-DELIVERY-PATH.md) to define the minimal collaboration and deployment path for the current solo-human + AI-assisted workflow.
+- Narrowed the recommended setup to `local + demo`, `feature/* + main`, and a single Alibaba Cloud demo environment.
+- Defined the MVP-focused scope, minimal cloud resources, minimum release flow, and smoke checklist for this project stage.
+
+### Lean Delivery Verification
+- Documentation-only planning update; no extra code validation was required.
+
+### Detail Page Upgrade
+- Updated homepage knowledge cards to open the document detail page in a new browser tab using the `?solution=` query parameter.
+- Added the document-scoped chat panel back into the single-document detail page so preview and question answering can be tested together.
+- Softened the homepage UI by replacing the large black statistic block, primary action button, active sidebar state, and main chat user bubbles with the amber service palette.
+- Confirmed the frontend type check passed after the detail-page and UI updates.
+
+### MinerU Image Finding
+- Confirmed the current MinerU upload path still does not wire image assets into FastGPT via the `localFile` helper.
+- Confirmed the code path currently prefers HTTP/base64 markdown handling for images, which likely explains why FastGPT collection previews are not rendering document images even though the local detail page can still show them.
+
+### Citation And Accuracy Upgrade
+- Tightened document-scoped citation extraction so single-document chat now filters quote results by both `collectionId` and source-name matching instead of relying on collection match only.
+- Added normalized citation deduplication and score-based sorting for both global chat and single-document chat before sending references to the frontend.
+- Enriched citation payloads with source labels, file names, chunk indexes, and related solution metadata to support clearer evidence rendering.
+- Updated the global chat and single-document chat UI to display citation labels and richer evidence snippets instead of bare text blocks.
+
+### Citation Verification
+- Confirmed frontend type-check passes with `client/npx tsc --noEmit`.
+- Confirmed backend syntax-check passes with `server/node --check src/index.js`.
+
+### FastGPT Workflow Follow-up
+- The backend now also passes `sourceName` alongside `collectionId` to the solution-scoped FastGPT workflow variables.
+- FastGPT workflow-side filtering still needs to be aligned so the knowledge-search node and AI response node consistently respect the current document scope and preserve quote metadata.

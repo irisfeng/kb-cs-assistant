@@ -38,12 +38,16 @@ export interface Citation {
   q: string;
   a?: string;
   score?: number;
+  source?: string;
+  sourceName?: string;
+  fileName?: string;
+  collectionId?: string;
+  chunkIndex?: number;
 }
 
 export interface EnhancedCitation extends Citation {
-  solutionId: string;
-  solutionTitle: string;
-  source?: string;
+  solutionId?: string;
+  solutionTitle?: string;
 }
 
 export interface ChatMessage {
