@@ -42,6 +42,9 @@ function csvEscape(value) {
 }
 
 function normalizeDatasetLabel(record) {
+  if (record.securityLevel === "SCAN_ERROR") {
+    return "待人工复核-源文件异常";
+  }
   if (record.extension === ".xlsx") {
     return "派生-按工作表拆分";
   }
@@ -51,7 +54,10 @@ function normalizeDatasetLabel(record) {
     .trim();
 
   if (record.securityLevel === "RESTRICTED") {
-    return `内部-${baseName}`;
+    return `内部待拆分-${baseName}`;
+  }
+  if (record.securityLevel === "INTERNAL_SUPPORT") {
+    return `内部支持-${baseName}`;
   }
   if (record.documentType === "FAQ_INDEX") {
     return "全局-FAQ";
@@ -65,8 +71,14 @@ function normalizeDatasetLabel(record) {
 function buildNotes(record) {
   const notes = [];
 
+  if (record.securityLevel === "SCAN_ERROR") {
+    notes.push(`scan failed: ${record.extractError || "unknown error"}`);
+  }
   if (record.securityLevel === "RESTRICTED") {
     notes.push(`contains sensitive signals: ${record.sensitiveSignals.join("|")}`);
+  }
+  if (record.securityLevel === "INTERNAL_SUPPORT") {
+    notes.push("internal support only; exclude from public CS app");
   }
   if (record.extension === ".xlsx") {
     notes.push("spreadsheet source; derive markdown/json with extract-xlsx-knowledge.js before import");
@@ -85,6 +97,9 @@ function buildNotes(record) {
 }
 
 function buildAction(record) {
+  if (record.securityLevel === "SCAN_ERROR") {
+    return "REVIEW_SOURCE_FILE";
+  }
   if (record.securityLevel === "RESTRICTED") {
     return "SPLIT_OR_REDACT";
   }
@@ -93,6 +108,9 @@ function buildAction(record) {
   }
   if (!record.isLatest) {
     return "ARCHIVE_ONLY";
+  }
+  if (record.securityLevel === "INTERNAL_SUPPORT") {
+    return "IMPORT_INTERNAL_ONLY";
   }
   return "IMPORT";
 }

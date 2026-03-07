@@ -83,7 +83,7 @@ cd server
 node src/scripts/generate-knowledge-inventory.js --dir="C:\\path\\to\\docs" --output="C:\\path\\to\\inventory-output"
 ```
 
-The scanner produces JSON and CSV inventory files and flags likely restricted files such as documents containing default credentials or private IP addresses.
+The scanner produces JSON and CSV inventory files, classifies files into `PUBLIC_CS` / `INTERNAL_SUPPORT` / `RESTRICTED`, and records `SCAN_ERROR` items instead of aborting the whole batch when a source file cannot be parsed.
 
 See `docs/KNOWLEDGE-BASE-GOVERNANCE-PLAN.md` for the recommended production library structure and document classification rules.
 
@@ -93,6 +93,8 @@ To convert the inventory into an import checklist and recommended dataset plan:
 cd server
 node src/scripts/generate-import-manifest.js --inventory="C:\\path\\to\\inventory-output\\knowledge-inventory.json" --output="C:\\path\\to\\manifest-output"
 ```
+
+The manifest generator maps internal-only documents to `IMPORT_INTERNAL_ONLY`, spreadsheet sources to `EXTRACT_THEN_IMPORT`, and explicitly sensitive files to `SPLIT_OR_REDACT`.
 
 To extract Q&A spreadsheets and device compatibility sheets into import-ready Markdown and JSON:
 

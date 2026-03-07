@@ -10,9 +10,8 @@ const DEFAULT_OUTPUT_DIR = path.resolve(process.cwd(), "inventory-output");
 const SENSITIVE_PATTERNS = [
   { pattern: /\b(?:admin|administrator)\b/i, reason: "admin_account_reference" },
   { pattern: /\b(?:ssh|shell)\b/i, reason: "ssh_reference" },
-  { pattern: /\b(?:password|passwd|pwd|账密|密码|默认密码|初始密码)\b/i, reason: "password_reference" },
-  { pattern: /\b(?:默认账密|初始账密)\b/i, reason: "default_credentials" },
-  { pattern: /\b(?:仅内部使用|内部使用|不对外提供)\b/i, reason: "internal_only_phrase" },
+  { pattern: /\b(?:password|passwd|pwd)\b/i, reason: "password_reference_en" },
+  { pattern: /(?:默认账密|初始账密|默认密码|初始密码)/, reason: "default_credentials" },
   { pattern: /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})\b/, reason: "private_ip_address" },
   { pattern: /https?:\/\/(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[0-1])\.)/i, reason: "private_url" },
   { pattern: /\b(?:ictuser|root|task_test)\b/i, reason: "default_user_candidate" }
@@ -24,8 +23,13 @@ const INTERNAL_SUPPORT_PATTERNS = [
   /接入平台/i,
   /管理平台/i,
   /任务创建/i,
+  /任务删除/i,
+  /任务查看/i,
   /任务监测/i,
+  /平台登录信息/i,
   /登录信息/i,
+  /页面地址及默认账密如下/i,
+  /仅内部使用|内部使用|不对外提供/i,
   /设备状态/i
 ];
 
@@ -176,8 +180,11 @@ function inferProductName(fileName) {
 }
 
 function inferImportScope(documentType, productLine, securityLevel) {
-  if (securityLevel === "RESTRICTED") {
+  if (securityLevel === "RESTRICTED" || securityLevel === "INTERNAL_SUPPORT") {
     return "INTERNAL";
+  }
+  if (securityLevel === "SCAN_ERROR") {
+    return "REVIEW";
   }
   if (documentType === "FAQ_INDEX") {
     return "GLOBAL";
@@ -189,6 +196,9 @@ function inferImportScope(documentType, productLine, securityLevel) {
 }
 
 function inferAudienceScope(securityLevel) {
+  if (securityLevel === "SCAN_ERROR") {
+    return "REVIEW";
+  }
   if (securityLevel === "RESTRICTED") {
     return "RESTRICTED";
   }
@@ -288,12 +298,25 @@ async function scanDirectory(directoryPath) {
     const filePath = path.join(directoryPath, entry.name);
     const extension = path.extname(entry.name).toLowerCase();
     const stats = await fs.stat(filePath);
-    const rawText = await extractText(filePath, extension);
-    const preview = rawText.replace(/\s+/g, " ").slice(0, 300);
     const { version, versionRank } = parseVersion(entry.name);
-    const { securityLevel, sensitiveSignals } = inferSecurityLevel(rawText, entry.name);
     const documentType = inferDocumentType(entry.name);
     const productLine = inferProductLine(entry.name);
+    let rawText = "";
+    let preview = "";
+    let status = "CANDIDATE";
+    let securityLevel = "CANDIDATE";
+    let sensitiveSignals = [];
+    let extractError = "";
+
+    try {
+      rawText = await extractText(filePath, extension);
+      preview = rawText.replace(/\s+/g, " ").slice(0, 300);
+      ({ securityLevel, sensitiveSignals } = inferSecurityLevel(rawText, entry.name));
+    } catch (error) {
+      status = "SCAN_ERROR";
+      securityLevel = "SCAN_ERROR";
+      extractError = error instanceof Error ? error.message : String(error);
+    }
 
     records.push({
       sourceDir: directoryPath,
@@ -314,8 +337,9 @@ async function scanDirectory(directoryPath) {
       securityLevel,
       audienceScope: inferAudienceScope(securityLevel),
       importScope: inferImportScope(documentType, productLine, securityLevel),
-      status: "CANDIDATE",
+      status,
       sensitiveSignals,
+      extractError,
       preview
     });
   }
@@ -370,6 +394,12 @@ async function writeOutputs(records, groups, outputDir) {
       .map((record) => ({
         fileName: record.fileName,
         sensitiveSignals: record.sensitiveSignals
+      })),
+    scanErrors: records
+      .filter((record) => record.status === "SCAN_ERROR")
+      .map((record) => ({
+        fileName: record.fileName,
+        extractError: record.extractError
       }))
   };
 
@@ -398,6 +428,7 @@ async function writeOutputs(records, groups, outputDir) {
     "importScope",
     "status",
     "sensitiveSignals",
+    "extractError",
     "filePath"
   ];
   const rows = [
