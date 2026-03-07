@@ -87,6 +87,13 @@ The scanner produces JSON and CSV inventory files and flags likely restricted fi
 
 See `docs/KNOWLEDGE-BASE-GOVERNANCE-PLAN.md` for the recommended production library structure and document classification rules.
 
+To convert the inventory into an import checklist and recommended dataset plan:
+
+```bash
+cd server
+node src/scripts/generate-import-manifest.js --inventory="C:\\path\\to\\inventory-output\\knowledge-inventory.json" --output="C:\\path\\to\\manifest-output"
+```
+
 ## Notes
 
 - The backend still lives mostly in `server/src/index.js`.
