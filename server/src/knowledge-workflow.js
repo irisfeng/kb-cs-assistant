@@ -328,7 +328,7 @@ export function sanitizeKnowledgeSubmission(submission) {
 
 export function resolveDatasetIdForSubmission(submission, env = process.env) {
   if (submission.audienceScope === "INTERNAL_SUPPORT") {
-    return env.FASTGPT_INTERNAL_DATASET_ID || env.FASTGPT_DATASET_ID || "";
+    return env.FASTGPT_INTERNAL_DATASET_ID || "";
   }
 
   return env.FASTGPT_PUBLIC_DATASET_ID || env.FASTGPT_DATASET_ID || "";

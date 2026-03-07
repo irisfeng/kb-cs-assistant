@@ -79,6 +79,8 @@ Open `http://localhost:5173`.
 
 `server/src/db.json` now stores both published knowledge assets and `knowledgeSubmissions` waiting for review or publication.
 
+Internal-support submissions require `FASTGPT_INTERNAL_DATASET_ID`. If it is not configured, internal documents will stay blocked at publish time instead of falling back to the public dataset.
+
 ## Inventory And Governance
 
 Before importing large document batches into FastGPT, generate an inventory and review version/security classification first.
