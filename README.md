@@ -115,3 +115,4 @@ node src/scripts/extract-xlsx-knowledge.js --file="C:\\path\\to\\知识素材.xl
 - The backend still lives mostly in `server/src/index.js`.
 - Some legacy draft/PPT generation code still exists in the backend and is now disabled by default unless `ENABLE_LEGACY_DRAFTS=true`.
 - This project focuses on customer service knowledge retrieval, SOP execution, and AI response assistance.
+- For the current release checklist and minimum deployment sizing, see `docs/FASTGPT_DEPLOYMENT.md`.
