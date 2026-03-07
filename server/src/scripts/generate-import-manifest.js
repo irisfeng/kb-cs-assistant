@@ -42,6 +42,9 @@ function csvEscape(value) {
 }
 
 function normalizeDatasetLabel(record) {
+  if (record.extension === ".xlsx") {
+    return "派生-按工作表拆分";
+  }
   const baseName = (record.productName || record.fileName || "")
     .replace(/\s+/g, " ")
     .replace(/\.[^.]+$/, "")
@@ -66,7 +69,7 @@ function buildNotes(record) {
     notes.push(`contains sensitive signals: ${record.sensitiveSignals.join("|")}`);
   }
   if (record.extension === ".xlsx") {
-    notes.push("spreadsheet source; verify whether it is retrieval content or metadata only");
+    notes.push("spreadsheet source; derive markdown/json with extract-xlsx-knowledge.js before import");
   }
   if (record.importScope === "DEVICE") {
     notes.push("keep separate from product policy datasets");
@@ -85,11 +88,11 @@ function buildAction(record) {
   if (record.securityLevel === "RESTRICTED") {
     return "SPLIT_OR_REDACT";
   }
+  if (record.extension === ".xlsx") {
+    return "EXTRACT_THEN_IMPORT";
+  }
   if (!record.isLatest) {
     return "ARCHIVE_ONLY";
-  }
-  if (record.extension === ".xlsx" && record.documentType !== "FAQ_INDEX") {
-    return "REVIEW_THEN_IMPORT";
   }
   return "IMPORT";
 }

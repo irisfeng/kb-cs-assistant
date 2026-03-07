@@ -94,6 +94,13 @@ cd server
 node src/scripts/generate-import-manifest.js --inventory="C:\\path\\to\\inventory-output\\knowledge-inventory.json" --output="C:\\path\\to\\manifest-output"
 ```
 
+To extract Q&A spreadsheets and device compatibility sheets into import-ready Markdown and JSON:
+
+```bash
+cd server
+node src/scripts/extract-xlsx-knowledge.js --file="C:\\path\\to\\知识素材.xlsx" --output="C:\\path\\to\\xlsx-derived-output"
+```
+
 ## Notes
 
 - The backend still lives mostly in `server/src/index.js`.
