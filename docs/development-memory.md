@@ -141,6 +141,18 @@
 
 ### Test Record
 - Added [docs/LOCAL-VERIFICATION-2026-03-08.md](C:/Users/tonif/Documents/trae_projects/kb-cs-assistant/docs/LOCAL-VERIFICATION-2026-03-08.md) as the detailed local verification log for this round.
+- Added [docs/COMPREHENSIVE-ASSESSMENT-2026-03-08.md](C:/Users/tonif/Documents/trae_projects/kb-cs-assistant/docs/COMPREHENSIVE-ASSESSMENT-2026-03-08.md) as the consolidated readiness assessment.
 
 ### Remaining Note
 - The local `.env` adjustment is intentionally not committed; it is a machine-specific test change, not a shared repo default.
+
+### Session Continuity Fix
+- Identified that reusing the same FastGPT `chatId` together with full client-side message history caused follow-up turns to regress into a generic greeting.
+- Added a backend-side safeguard: when the request already includes full conversation history, the customer-service chat routes no longer reuse the old FastGPT `chatId`.
+- Added a second low-risk mitigation: retrieval-aware message rewriting now injects document scope and recent turn context into the last user message before calling FastGPT.
+- The chat-id safeguard reduced one class of regression, but did not fully stabilize document-scoped follow-up behavior.
+
+### Assessment Finding
+- The submission/review/publish/preview workflow is locally usable.
+- Document-scoped chat is still not production-stable: repeated runs against the same question can alternate between a correct grounded answer and a generic greeting.
+- Global customer-service chat is still not production-ready because it often answers without citations, can return greetings on valid scenarios, and may fabricate unsupported handling rules when the knowledge base lacks explicit SOP evidence.

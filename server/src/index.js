@@ -352,6 +352,64 @@ function buildSolutionScopePrompt(solution) {
   ].join("\n\n");
 }
 
+function trimRetrievalContext(value = "", maxLength = 320) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function buildRetrievalAwareMessages(messages = [], { scopeLabel = "", scopeHint = "" } = {}) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+
+  const normalizedMessages = messages
+    .filter(
+      (message) =>
+        message &&
+        typeof message.role === "string" &&
+        typeof message.content === "string" &&
+        message.content.trim(),
+    )
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+
+  const lastUserIndex = normalizedMessages.map((message) => message.role).lastIndexOf("user");
+  if (lastUserIndex === -1) {
+    return normalizedMessages;
+  }
+
+  const recentTurns = normalizedMessages
+    .slice(Math.max(0, lastUserIndex - 4), lastUserIndex)
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => {
+      const prefix = message.role === "assistant" ? "Previous assistant answer" : "Previous user question";
+      const maxLength = message.role === "assistant" ? 220 : 160;
+      return `${prefix}: ${trimRetrievalContext(message.content, maxLength)}`;
+    });
+
+  normalizedMessages[lastUserIndex] = {
+    ...normalizedMessages[lastUserIndex],
+    content: [
+      scopeLabel ? `Conversation scope: ${scopeLabel}` : "",
+      scopeHint ? `Scope hint: ${scopeHint}` : "",
+      recentTurns.length ? `Recent conversation:\n${recentTurns.join("\n")}` : "",
+      `Current user question:\n${normalizedMessages[lastUserIndex].content}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+
+  return normalizedMessages;
+}
+
 function normalizeComparableText(value = "") {
   return String(value)
     .trim()
@@ -549,6 +607,21 @@ function resolveChatSessionId(sessionId, fallbackScope) {
   }
 
   return `${fallbackScope}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function resolveFastGptChatId(sessionId, fallbackScope, messages) {
+  const hasConversationHistory =
+    Array.isArray(messages) && messages.filter((message) => message?.role !== "system").length > 1;
+
+  // FastGPT workflow sessions currently regress into a generic greeting when an
+  // existing chatId is reused together with a full local message history.
+  // For follow-up turns, rely on the explicit message history from the client
+  // and let FastGPT start a fresh chat context per request.
+  if (hasConversationHistory) {
+    return undefined;
+  }
+
+  return resolveChatSessionId(sessionId, fallbackScope);
 }
 
 function getLegacyPptTemplates() {
@@ -1587,6 +1660,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
   const { id } = req.params;
   const { messages = [], sessionId } = req.body;
   const resolvedSessionId = resolveChatSessionId(sessionId, `solution-${id}`);
+  const fastGptChatId = resolveFastGptChatId(sessionId, `solution-${id}`, messages);
   logEvent(
     "info",
     "solution_chat.started",
@@ -1659,13 +1733,19 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
       JSON.stringify({ collectionId: solution.collectionId }),
     );
     console.log("[SolutionChat] Session ID:", resolvedSessionId);
+    console.log("[SolutionChat] FastGPT Chat ID:", fastGptChatId || "(fresh per request)");
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
 
+    const retrievalAwareMessages = buildRetrievalAwareMessages(messages, {
+      scopeLabel: `document "${solution.title}"`,
+      scopeHint: `Only retrieve evidence from "${solution.fileName}" (collection ${solution.collectionId}).`,
+    });
+
     const requestBody = {
       model: "solution-kb-chat",
-      chatId: resolvedSessionId,
+      chatId: fastGptChatId,
       stream: true,
       detail: true,
       // Pass collectionId as variable to workflow (if configured)
@@ -1673,7 +1753,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
         collectionId: solution.collectionId,
         sourceName: solution.fileName,
       },
-      messages: [{ role: "system", content: scopedPrompt }, ...messages],
+      messages: [{ role: "system", content: scopedPrompt }, ...retrievalAwareMessages],
     };
     console.log(
       "[SolutionChat] Request body keys:",
@@ -2376,6 +2456,7 @@ async function findSolutionByCollectionId(collectionId) {
 app.post("/api/chat", async (req, res) => {
   const { messages = [], sessionId } = req.body;
   const resolvedSessionId = resolveChatSessionId(sessionId, "global");
+  const fastGptChatId = resolveFastGptChatId(sessionId, "global", messages);
   logEvent(
     "info",
     "global_chat.started",
@@ -2396,6 +2477,7 @@ app.post("/api/chat", async (req, res) => {
       process.env.FASTGPT_WORKFLOW_KEY?.substring(0, 20) + "...",
     );
     console.log("[Debug GlobalChat] Session ID:", resolvedSessionId);
+    console.log("[Debug GlobalChat] FastGPT Chat ID:", fastGptChatId || "(fresh per request)");
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
@@ -2409,14 +2491,20 @@ app.post("/api/chat", async (req, res) => {
       }
     }
 
+    const retrievalAwareMessages = buildRetrievalAwareMessages(messages, {
+      scopeLabel: "global customer-service knowledge base",
+      scopeHint:
+        "Prefer grounded SOP and policy evidence. If evidence is missing, answer conservatively and require manual review.",
+    });
+
     const response = await axios.post(
       `${process.env.FASTGPT_BASE_URL}/v1/chat/completions`,
       {
         model: "solution-kb-chat",
-        chatId: resolvedSessionId,
+        chatId: fastGptChatId,
         stream: true, // Enable streaming
         detail: true,
-        messages: [{ role: "system", content: GLOBAL_CUSTOMER_SERVICE_PROMPT }, ...messages],
+        messages: [{ role: "system", content: GLOBAL_CUSTOMER_SERVICE_PROMPT }, ...retrievalAwareMessages],
       },
       {
         headers: {
