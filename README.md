@@ -74,6 +74,19 @@ Open `http://localhost:5173`.
 - Uploaded files: `server/public/files`
 - Extracted images: `server/public/images`
 
+## Inventory And Governance
+
+Before importing large document batches into FastGPT, generate an inventory and review version/security classification first.
+
+```bash
+cd server
+node src/scripts/generate-knowledge-inventory.js --dir="C:\\path\\to\\docs" --output="C:\\path\\to\\inventory-output"
+```
+
+The scanner produces JSON and CSV inventory files and flags likely restricted files such as documents containing default credentials or private IP addresses.
+
+See `docs/KNOWLEDGE-BASE-GOVERNANCE-PLAN.md` for the recommended production library structure and document classification rules.
+
 ## Notes
 
 - The backend still lives mostly in `server/src/index.js`.
