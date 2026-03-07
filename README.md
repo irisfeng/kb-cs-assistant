@@ -37,6 +37,8 @@ Recommended values:
 
 - `FASTGPT_BASE_URL=http://localhost:3000`
 - `FASTGPT_DATASET_ID=...`
+- `FASTGPT_PUBLIC_DATASET_ID=...` for normal customer-service assets
+- `FASTGPT_INTERNAL_DATASET_ID=...` for internal-support-only assets
 - `FASTGPT_API_KEY=...`
 - `FASTGPT_APP_KEY=...`
 - `FASTGPT_WORKFLOW_KEY=...`
@@ -59,6 +61,7 @@ Open `http://localhost:5173`.
 3. Open a single document and run scoped Q&A against that source only.
 4. Maintain SOPs, escalation rules, and standard replies in the SOP library.
 5. Use the assistant as a support copilot for refund, complaint, activation, account, and escalation scenarios.
+6. Submit new knowledge or knowledge changes into a review queue, then approve and publish them to FastGPT.
 
 ## Architecture
 
@@ -73,6 +76,8 @@ Open `http://localhost:5173`.
 - SOP library: `server/data/capabilities.json`
 - Uploaded files: `server/public/files`
 - Extracted images: `server/public/images`
+
+`server/src/db.json` now stores both published knowledge assets and `knowledgeSubmissions` waiting for review or publication.
 
 ## Inventory And Governance
 

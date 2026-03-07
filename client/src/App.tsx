@@ -20,6 +20,7 @@ import { SolutionDetail } from './components/SolutionDetail';
 import { UploadModal } from './components/UploadModal';
 import { ChatInterface } from './components/ChatInterface';
 import { CapabilityLibrary } from './components/CapabilityLibrary';
+import { KnowledgeSubmissionCard } from './components/KnowledgeSubmissionCard';
 import { Pagination } from './components/Pagination';
 import { useToast } from './contexts/ToastContext';
 import {
@@ -30,7 +31,12 @@ import {
   resetChatSessionId,
   saveChatHistory,
 } from './utils/storage';
-import type { ChatMessage, Solution, ViewMode } from './types/solution';
+import type {
+  ChatMessage,
+  KnowledgeSubmission,
+  Solution,
+  ViewMode,
+} from './types/solution';
 import type { ProductCapability } from './types/capability';
 
 const ITEMS_PER_PAGE = 12;
@@ -44,6 +50,7 @@ function App() {
   const [selectedSolutionId, setSelectedSolutionId] = useState<string | null>(null);
 
   const [solutions, setSolutions] = useState<Solution[]>([]);
+  const [submissions, setSubmissions] = useState<KnowledgeSubmission[]>([]);
   const [capabilities, setCapabilities] = useState<ProductCapability[]>([]);
 
   const [uploading, setUploading] = useState(false);
@@ -56,7 +63,9 @@ function App() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [submittedByRole, setSubmittedByRole] = useState<'agent' | 'team_lead'>('agent');
   const [file, setFile] = useState<File | null>(null);
+  const [submissionActionId, setSubmissionActionId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -75,7 +84,7 @@ function App() {
   }, [messages]);
 
   useEffect(() => {
-    void Promise.all([fetchSolutions(), fetchSupportAssets()]);
+    void Promise.all([fetchSolutions(), fetchSubmissions(), fetchSupportAssets()]);
   }, []);
 
   useEffect(() => {
@@ -109,6 +118,15 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch solutions', error);
       showError(t('solutions.form.fail'));
+    }
+  };
+
+  const fetchSubmissions = async () => {
+    try {
+      const res = await axios.get('/api/knowledge/submissions');
+      setSubmissions(res.data);
+    } catch (error) {
+      console.error('Failed to fetch knowledge submissions', error);
     }
   };
 
@@ -202,16 +220,19 @@ function App() {
     setUploadProgress(0);
     setUploadStatus('queued');
     setUploadStatusMessage(
-      i18n.language === 'zh' ? '文件已进入上传队列，正在发送到服务端。' : 'The file has entered the upload queue.',
+      i18n.language === 'zh'
+        ? '知识变更已进入提报队列，正在发送到服务端。'
+        : 'The knowledge change request has entered the submission queue.',
     );
 
     const formData = new FormData();
     formData.append('file', file);
     formData.append('title', title);
     formData.append('description', description);
+    formData.append('submittedByRole', submittedByRole);
 
     try {
-      await axios.post('/api/upload', formData, {
+      await axios.post('/api/knowledge/submissions', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
@@ -221,8 +242,8 @@ function App() {
               setUploadStatus('processing');
               setUploadStatusMessage(
                 i18n.language === 'zh'
-                  ? '文件上传完成，正在解析内容并写入知识库。'
-                  : 'Upload complete. Parsing and indexing the document now.',
+                  ? '文件上传完成，系统正在识别元数据并生成待审核记录。'
+                  : 'Upload complete. Building the review record now.',
               );
             }
           }
@@ -232,15 +253,16 @@ function App() {
       setUploadStatus('success');
       setUploadStatusMessage(
         i18n.language === 'zh'
-          ? '资料已成功入库，可以开始检索和问答。'
-          : 'The document was indexed successfully and is ready for Q&A.',
+          ? '资料已提交成功，已进入待审核队列。'
+          : 'The document was submitted successfully and is now pending review.',
       );
       setUploading(false);
       setTitle('');
       setDescription('');
+      setSubmittedByRole('agent');
       setFile(null);
-      showSuccess(t('solutions.form.success'));
-      await fetchSolutions();
+      showSuccess(i18n.language === 'zh' ? '知识提报已提交' : 'Knowledge submission created');
+      await fetchSubmissions();
       await new Promise((resolve) => window.setTimeout(resolve, 700));
       setUploadProgress(0);
       setShowUploadModal(false);
@@ -254,12 +276,54 @@ function App() {
         axios.isAxiosError(error) && error.response?.data?.error
           ? error.response.data.error
           : i18n.language === 'zh'
-            ? '上传失败，请检查文件内容或稍后重试。'
-            : 'Upload failed. Please retry in a moment.',
+            ? '提交失败，请检查文件内容或稍后重试。'
+            : 'Submission failed. Please retry in a moment.',
       );
-      showError(t('solutions.form.fail'));
+      showError(i18n.language === 'zh' ? '知识提报失败' : 'Knowledge submission failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleSubmissionReview = async (
+    submissionId: string,
+    decision: 'approve' | 'reject',
+  ) => {
+    try {
+      setSubmissionActionId(submissionId);
+      await axios.patch(`/api/knowledge/submissions/${submissionId}/review`, {
+        decision,
+        reviewedBy: 'team_lead',
+      });
+      await fetchSubmissions();
+      showSuccess(
+        decision === 'approve'
+          ? i18n.language === 'zh'
+            ? '提报已完成审核'
+            : 'Submission reviewed'
+          : i18n.language === 'zh'
+            ? '提报已驳回'
+            : 'Submission rejected',
+      );
+    } catch (error) {
+      console.error('Knowledge submission review failed', error);
+      showError(i18n.language === 'zh' ? '审核失败' : 'Review failed');
+    } finally {
+      setSubmissionActionId(null);
+    }
+  };
+
+  const handleSubmissionPublish = async (submissionId: string) => {
+    try {
+      setSubmissionActionId(submissionId);
+      await axios.post(`/api/knowledge/submissions/${submissionId}/publish`);
+      await Promise.all([fetchSubmissions(), fetchSolutions()]);
+      showSuccess(i18n.language === 'zh' ? '知识已发布入库' : 'Knowledge published');
+    } catch (error) {
+      console.error('Knowledge submission publish failed', error);
+      showError(i18n.language === 'zh' ? '发布失败' : 'Publish failed');
+    } finally {
+      setSubmissionActionId(null);
     }
   };
 
@@ -371,6 +435,10 @@ function App() {
   const totalPages = Math.ceil(filteredSolutions.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const displayedSolutions = filteredSolutions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const pendingSubmissions = submissions.filter((submission) =>
+    ['PENDING_REVIEW', 'APPROVED', 'BLOCKED'].includes(submission.status),
+  );
+  const recentSubmissions = submissions.slice(0, 4);
 
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
@@ -388,8 +456,8 @@ function App() {
   const knowledgeSummary = isChinese
     ? '\u7edf\u4e00\u7ba1\u7406\u5ba2\u670d\u77e5\u8bc6\u6587\u6863\u3001FAQ \u548c\u64cd\u4f5c\u8bf4\u660e\uff0c\u652f\u6301\u68c0\u7d22\u3001\u95ee\u7b54\u4e0e SOP \u534f\u4f5c\u3002'
     : 'Manage support documents, FAQs, and SOP guidance in one workspace for search and Q&A.';
-  const coreScenarioLabel = isChinese ? '\u6838\u5fc3\u573a\u666f' : 'Core Scenarios';
   const assistantReadyLabel = isChinese ? '\u5c31\u7eea' : 'Ready';
+  const submitKnowledgeLabel = isChinese ? '提交知识变更' : 'Submit Knowledge Change';
 
   const heroCards = [
     {
@@ -460,9 +528,9 @@ function App() {
                     </div>
                     <div className="rounded-3xl border border-white/70 bg-white/70 px-5 py-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
                       <p className="text-xs uppercase tracking-[0.25em] text-neutral-400">
-                        {coreScenarioLabel}
+                        {isChinese ? '待审核提报' : 'Pending Review'}
                       </p>
-                      <p className="mt-3 text-3xl font-semibold">5</p>
+                      <p className="mt-3 text-3xl font-semibold">{pendingSubmissions.length}</p>
                     </div>
                     <div className="rounded-3xl border border-white/70 bg-white/70 px-5 py-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
                       <p className="text-xs uppercase tracking-[0.25em] text-neutral-400">
@@ -525,7 +593,7 @@ function App() {
                         className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2.5 text-sm font-medium text-white transition hover:from-amber-600 hover:to-orange-600 dark:bg-amber-500 dark:text-neutral-950 dark:hover:bg-amber-400"
                       >
                         <Plus size={16} />
-                        {t('app.home.new_solution')}
+                        {submitKnowledgeLabel}
                       </button>
 
                       <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-neutral-50 p-1 dark:border-dark-border dark:bg-dark-bg">
@@ -668,6 +736,44 @@ function App() {
                   </div>
 
                   <div className="rounded-[28px] border border-neutral-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-card">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+                          {isChinese ? 'Knowledge Workflow' : 'Knowledge Workflow'}
+                        </p>
+                        <h3 className="text-lg font-semibold text-neutral-950 dark:text-white">
+                          {isChinese ? '知识提报与审核' : 'Knowledge Submission Queue'}
+                        </h3>
+                      </div>
+                      <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-neutral-600 dark:bg-dark-bg dark:text-dark-textSecondary">
+                        {pendingSubmissions.length} {isChinese ? '待处理' : 'pending'}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {recentSubmissions.length > 0 ? (
+                        recentSubmissions.map((submission) => (
+                          <KnowledgeSubmissionCard
+                            key={submission.id}
+                            submission={submission}
+                            busy={submissionActionId === submission.id}
+                            onApprove={(id) => void handleSubmissionReview(id, 'approve')}
+                            onReject={(id) => void handleSubmissionReview(id, 'reject')}
+                            onPublish={(id) => void handleSubmissionPublish(id)}
+                            onOpenPublishedAsset={(id) => handleSolutionClick(id)}
+                          />
+                        ))
+                      ) : (
+                        <div className="rounded-3xl border border-dashed border-neutral-200 px-4 py-8 text-center text-sm text-neutral-500 dark:border-dark-border dark:text-dark-textSecondary">
+                          {isChinese
+                            ? '暂无待审核知识提报。客服上传的资料会先出现在这里。'
+                            : 'No pending submissions yet.'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[28px] border border-neutral-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-card">
                     <h3 className="text-lg font-semibold text-neutral-950 dark:text-white">
                       {t('app.home.workflow_title')}
                     </h3>
@@ -713,6 +819,7 @@ function App() {
         onClose={() => setShowUploadModal(false)}
         title={title}
         description={description}
+        submittedByRole={submittedByRole}
         file={file}
         uploading={uploading}
         uploadProgress={uploadProgress}
@@ -720,6 +827,7 @@ function App() {
         uploadStatusMessage={uploadStatusMessage}
         onTitleChange={setTitle}
         onDescriptionChange={setDescription}
+        onSubmittedByRoleChange={setSubmittedByRole}
         onFileChange={setFile}
         onSubmit={handleUpload}
       />

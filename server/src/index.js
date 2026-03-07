@@ -33,6 +33,11 @@ import {
   getIndustryPainPoints,
   getIndustryMetrics,
 } from "./industry-config.js";
+import {
+  createKnowledgeSubmissionRecord,
+  resolveDatasetIdForSubmission,
+  sanitizeKnowledgeSubmission,
+} from "./knowledge-workflow.js";
 
 // Note: generatePPTFromImages is not fully implemented, generatePPT is used as fallback
 
@@ -499,8 +504,15 @@ app.use("/images", express.static(path.join(__dirname, "../public/images")));
 app.use("/files", express.static(path.join(__dirname, "../public/files")));
 
 // Database setup
-const defaultData = { solutions: [] };
+const defaultData = { solutions: [], knowledgeSubmissions: [] };
 const db = await JSONFilePreset(path.join(__dirname, "db.json"), defaultData);
+if (!Array.isArray(db.data.solutions)) {
+  db.data.solutions = [];
+}
+if (!Array.isArray(db.data.knowledgeSubmissions)) {
+  db.data.knowledgeSubmissions = [];
+}
+await db.write();
 
 // Capabilities database setup
 const defaultCapabilities = { capabilities: [] };
@@ -514,6 +526,15 @@ const defaultDrafts = { drafts: [] };
 const draftsDb = LEGACY_DRAFTS_ENABLED
   ? await JSONFilePreset(path.join(__dirname, "../data/drafts.json"), defaultDrafts)
   : null;
+
+function ensureKnowledgeDbShape() {
+  if (!Array.isArray(db.data.solutions)) {
+    db.data.solutions = [];
+  }
+  if (!Array.isArray(db.data.knowledgeSubmissions)) {
+    db.data.knowledgeSubmissions = [];
+  }
+}
 
 function sendLegacyFeatureDisabled(res) {
   return res.status(410).json(LEGACY_DRAFTS_DISABLED_RESPONSE);
@@ -1036,12 +1057,399 @@ async function parseWithMinerU(filePath, fileName) {
   };
 }
 
+async function importDocumentToKnowledgeBase({
+  sourceFilePath,
+  originalName,
+  title,
+  description = "",
+  datasetId,
+  existingOriginalFilePath = "",
+  cleanupSourceFile = false,
+}) {
+  if (!datasetId) {
+    throw new Error("FASTGPT dataset is not configured for this document");
+  }
+
+  const fileExt = path.extname(originalName).toLowerCase();
+  let originalFilePath = existingOriginalFilePath || "";
+  let copiedOriginalAbsolutePath = "";
+  const fileId = originalFilePath
+    ? path.basename(originalFilePath, path.extname(originalFilePath))
+    : `file_${Date.now()}`;
+
+  try {
+    if (!originalFilePath) {
+      const filesDir = path.join(__dirname, "../public/files");
+      if (!fs.existsSync(filesDir)) {
+        fs.mkdirSync(filesDir, { recursive: true });
+      }
+      const originalFileName = `${fileId}${fileExt}`;
+      copiedOriginalAbsolutePath = path.join(filesDir, originalFileName);
+      fs.copyFileSync(sourceFilePath, copiedOriginalAbsolutePath);
+      originalFilePath = `/files/${originalFileName}`;
+    }
+
+    let textContent = "";
+    let mineruResult = null;
+    const isMinerUEnabled =
+      process.env.MINERU_API_TOKEN &&
+      process.env.MINERU_API_TOKEN !== "your_mineru_token_here";
+
+    if (
+      fileExt === ".pdf" ||
+      fileExt === ".doc" ||
+      fileExt === ".docx" ||
+      fileExt === ".ppt" ||
+      fileExt === ".pptx" ||
+      fileExt === ".png" ||
+      fileExt === ".jpg" ||
+      fileExt === ".jpeg"
+    ) {
+      if (!isMinerUEnabled) {
+        throw new Error(
+          "MinerU API Token not configured. Please add MINERU_API_TOKEN to .env file.",
+        );
+      }
+      mineruResult = await parseWithMinerU(sourceFilePath, originalName);
+      textContent =
+        mineruResult?.text ||
+        mineruResult?.base64Markdown ||
+        mineruResult?.markdown ||
+        "";
+    } else if (fileExt === ".xlsx" || fileExt === ".xls") {
+      const workbook = xlsx.readFile(sourceFilePath);
+      const sheetNames = workbook.SheetNames;
+      const sheets = sheetNames.map((name) =>
+        xlsx.utils.sheet_to_csv(workbook.Sheets[name]),
+      );
+      textContent = sheets.join("\n\n--- Sheet Separator ---\n\n");
+    } else if (
+      fileExt === ".txt" ||
+      fileExt === ".md" ||
+      fileExt === ".csv" ||
+      fileExt === ".html"
+    ) {
+      textContent = fs.readFileSync(sourceFilePath, "utf-8");
+    } else {
+      throw new Error(`Unsupported file type: ${fileExt}`);
+    }
+
+    const fastGPTTextContent = mineruResult?.text || textContent;
+    const importRes = await axios.post(
+      `${process.env.FASTGPT_BASE_URL}/core/dataset/collection/create/text`,
+      {
+        datasetId,
+        name: originalName,
+        text: fastGPTTextContent,
+        trainingType: "chunk",
+        chunkSize: 8000,
+        chunkSplitter: "",
+        qaPrompt: "",
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const responseData = importRes.data.data;
+    let collectionId;
+    if (typeof responseData === "string") {
+      collectionId = responseData;
+    } else if (responseData?.collectionId) {
+      collectionId = responseData.collectionId;
+    } else {
+      throw new Error("Invalid FastGPT response: missing collectionId");
+    }
+
+    return {
+      collectionId,
+      solution: {
+        id: Date.now().toString(),
+        title,
+        description,
+        fileName: originalName,
+        fileId,
+        originalFilePath,
+        collectionId,
+        datasetId,
+        localMarkdown: mineruResult?.localMarkdown || "",
+        batchId: mineruResult?.batchId || "",
+        imageCount: mineruResult?.imageCount || 0,
+        uploadStatus: "success",
+        createdAt: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    if (copiedOriginalAbsolutePath && fs.existsSync(copiedOriginalAbsolutePath)) {
+      fs.unlinkSync(copiedOriginalAbsolutePath);
+    }
+    throw error;
+  } finally {
+    if (cleanupSourceFile && sourceFilePath && fs.existsSync(sourceFilePath)) {
+      fs.unlinkSync(sourceFilePath);
+    }
+  }
+}
+
 // ==================== Routes ====================
+
+app.get("/api/knowledge/submissions", async (_req, res) => {
+  await db.read();
+  ensureKnowledgeDbShape();
+
+  const submissions = [...db.data.knowledgeSubmissions]
+    .sort((left, right) => {
+      const leftDate = left.submittedAt || "";
+      const rightDate = right.submittedAt || "";
+      return rightDate.localeCompare(leftDate);
+    })
+    .map((item) => sanitizeKnowledgeSubmission(item));
+
+  res.json(submissions);
+});
+
+app.post("/api/knowledge/submissions", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return sendApiError(res, {
+      status: 400,
+      code: "KNOWLEDGE_FILE_REQUIRED",
+      message: "No file uploaded",
+      requestId: req.requestId,
+    });
+  }
+
+  const originalName = fixFileNameEncoding(req.file.originalname);
+  const title = typeof req.body.title === "string" && req.body.title.trim()
+    ? req.body.title.trim()
+    : originalName;
+  const description =
+    typeof req.body.description === "string" ? req.body.description.trim() : "";
+  const submittedByRole =
+    typeof req.body.submittedByRole === "string" && req.body.submittedByRole.trim()
+      ? req.body.submittedByRole.trim()
+      : "agent";
+  const tempFilePath = req.file.path;
+  const fileExt = path.extname(originalName).toLowerCase();
+  let storedFileAbsolutePath = "";
+
+  try {
+    const filesDir = path.join(__dirname, "../public/files");
+    if (!fs.existsSync(filesDir)) {
+      fs.mkdirSync(filesDir, { recursive: true });
+    }
+
+    const storageKey = `submission_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const storedFileName = `${storageKey}${fileExt}`;
+    storedFileAbsolutePath = path.join(filesDir, storedFileName);
+    fs.copyFileSync(tempFilePath, storedFileAbsolutePath);
+
+    const submission = await createKnowledgeSubmissionRecord({
+      title,
+      description,
+      originalName,
+      storedFilePath: storedFileAbsolutePath,
+      originalFilePath: `/files/${storedFileName}`,
+      submittedByRole,
+    });
+
+    await db.read();
+    ensureKnowledgeDbShape();
+    db.data.knowledgeSubmissions.unshift(submission);
+    await db.write();
+
+    res.status(201).json({
+      message: "Knowledge submission created",
+      submission: sanitizeKnowledgeSubmission(submission),
+    });
+  } catch (error) {
+    if (storedFileAbsolutePath && fs.existsSync(storedFileAbsolutePath)) {
+      fs.unlinkSync(storedFileAbsolutePath);
+    }
+
+    console.error("Knowledge submission failed:", error.message);
+    return sendApiError(res, {
+      status: 500,
+      code: "KNOWLEDGE_SUBMISSION_FAILED",
+      message: "Failed to create knowledge submission",
+      requestId: req.requestId,
+      details: {
+        fileName: originalName,
+      },
+    });
+  } finally {
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
+});
+
+app.patch("/api/knowledge/submissions/:id/review", async (req, res) => {
+  const { id } = req.params;
+  const decision = typeof req.body.decision === "string" ? req.body.decision : "";
+  const reviewNote =
+    typeof req.body.reviewNote === "string" ? req.body.reviewNote.trim() : "";
+  const reviewedBy =
+    typeof req.body.reviewedBy === "string" && req.body.reviewedBy.trim()
+      ? req.body.reviewedBy.trim()
+      : "team_lead";
+
+  if (!["approve", "reject"].includes(decision)) {
+    return sendApiError(res, {
+      status: 400,
+      code: "INVALID_REVIEW_DECISION",
+      message: "decision must be approve or reject",
+      requestId: req.requestId,
+    });
+  }
+
+  await db.read();
+  ensureKnowledgeDbShape();
+  const submission = db.data.knowledgeSubmissions.find((item) => item.id === id);
+
+  if (!submission) {
+    return sendApiError(res, {
+      status: 404,
+      code: "KNOWLEDGE_SUBMISSION_NOT_FOUND",
+      message: "Knowledge submission not found",
+      requestId: req.requestId,
+    });
+  }
+
+  if (submission.status === "PUBLISHED") {
+    return sendApiError(res, {
+      status: 409,
+      code: "KNOWLEDGE_SUBMISSION_ALREADY_PUBLISHED",
+      message: "Published submission cannot be reviewed again",
+      requestId: req.requestId,
+    });
+  }
+
+  const isBlockedAction = [
+    "SPLIT_OR_REDACT",
+    "EXTRACT_THEN_IMPORT",
+    "REVIEW_SOURCE_FILE",
+  ].includes(submission.recommendedAction);
+
+  if (decision === "reject") {
+    submission.status = "REJECTED";
+    submission.reviewNote = reviewNote || "驳回该知识提报，请补充说明后重新提交。";
+  } else if (isBlockedAction) {
+    submission.status = "BLOCKED";
+    submission.reviewNote =
+      reviewNote || "当前文件不能直接发布，请先完成脱敏、抽取或源文件修复。";
+  } else {
+    submission.status = "APPROVED";
+    submission.reviewNote = reviewNote || "审核通过，可发布到知识库。";
+  }
+
+  submission.reviewedBy = reviewedBy;
+  submission.reviewedAt = new Date().toISOString();
+  await db.write();
+
+  res.json({
+    message: "Knowledge submission reviewed",
+    submission: sanitizeKnowledgeSubmission(submission),
+  });
+});
+
+app.post("/api/knowledge/submissions/:id/publish", async (req, res) => {
+  const { id } = req.params;
+
+  await db.read();
+  ensureKnowledgeDbShape();
+  const submission = db.data.knowledgeSubmissions.find((item) => item.id === id);
+
+  if (!submission) {
+    return sendApiError(res, {
+      status: 404,
+      code: "KNOWLEDGE_SUBMISSION_NOT_FOUND",
+      message: "Knowledge submission not found",
+      requestId: req.requestId,
+    });
+  }
+
+  if (submission.status !== "APPROVED") {
+    return sendApiError(res, {
+      status: 409,
+      code: "KNOWLEDGE_SUBMISSION_NOT_APPROVED",
+      message: "Only approved submissions can be published",
+      requestId: req.requestId,
+      details: { status: submission.status },
+    });
+  }
+
+  const datasetId = resolveDatasetIdForSubmission(submission);
+  if (!datasetId) {
+    return sendApiError(res, {
+      status: 400,
+      code: "FASTGPT_DATASET_NOT_CONFIGURED",
+      message: "No FastGPT dataset configured for this submission",
+      requestId: req.requestId,
+    });
+  }
+
+  try {
+    const { solution, collectionId } = await importDocumentToKnowledgeBase({
+      sourceFilePath: submission.storedFilePath,
+      originalName: submission.fileName,
+      title: submission.title,
+      description: submission.description,
+      datasetId,
+      existingOriginalFilePath: submission.originalFilePath,
+    });
+
+    solution.knowledgeSubmissionId = submission.id;
+    solution.securityLevel = submission.securityLevel;
+    solution.audienceScope = submission.audienceScope;
+    solution.importScope = submission.importScope;
+    solution.productLine = submission.productLine;
+    solution.productName = submission.productName;
+    solution.version = submission.version;
+
+    db.data.solutions.unshift(solution);
+    submission.status = "PUBLISHED";
+    submission.publishedAt = new Date().toISOString();
+    submission.publishedSolutionId = solution.id;
+    submission.collectionId = collectionId;
+    submission.datasetId = datasetId;
+    await db.write();
+
+    res.json({
+      message: "Knowledge submission published",
+      solution,
+      submission: sanitizeKnowledgeSubmission(submission),
+    });
+  } catch (error) {
+    console.error("Knowledge submission publish failed:", error.message);
+    return sendApiError(res, {
+      status: 500,
+      code: "KNOWLEDGE_PUBLISH_FAILED",
+      message: "Failed to publish knowledge submission",
+      requestId: req.requestId,
+      details: {
+        fileName: submission.fileName,
+        datasetId,
+      },
+    });
+  }
+});
 
 // Get all solutions
 app.get("/api/solutions", async (req, res) => {
   await db.read();
-  res.json(db.data.solutions);
+  ensureKnowledgeDbShape();
+  res.json(
+    [...db.data.solutions].sort((left, right) => {
+      const leftDate = left.createdAt || "";
+      const rightDate = right.createdAt || "";
+      return rightDate.localeCompare(leftDate);
+    }),
+  );
 });
 
 // Get solution detail with FastGPT data
