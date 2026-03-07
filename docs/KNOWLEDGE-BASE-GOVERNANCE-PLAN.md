@@ -1,84 +1,86 @@
-# Knowledge Base Governance Plan
+# 知识库治理方案
 
-## Goal
+## 一、目标
 
-This plan defines how the project should prepare, classify, and import customer-service documents into FastGPT for production use.
+本方案用于定义项目在生产环境中，如何对客服资料进行整理、分级、拆分、入库和使用。
 
-The immediate target is to avoid three common production failures:
+本阶段重点解决 3 类常见生产问题：
 
-1. old and new versions answering at the same time
-2. internal or sensitive operations content leaking into general support answers
-3. unrelated products being retrieved in the same conversation
+1. 新旧版本同时命中，导致答案冲突
+2. 内部运维或敏感信息混入普通客服回答
+3. 不同产品资料混查，导致引用范围失控
 
-## Recommended Production Structure
+## 二、推荐的生产结构
 
-### Layer 1: Global Policy Library
+### 1. 全局规则库
 
-Use this library for knowledge that is shared across products.
+用于存放所有产品共用的知识。
 
-- service hotlines
-- escalation rules
-- refund and compensation principles
-- common service terminology
-- standard answer templates
+- 客服热线
+- 升级转人工规则
+- 退款、补偿原则
+- 统一术语说明
+- 标准回复模板
 
-### Layer 2: Product Customer-Service Libraries
+### 2. 产品客服库
 
-Use one library per product or per stable product family.
+按产品或稳定产品族建立独立知识库。
 
-- passenger flow analytics
-- license plate recognition
-- intrusion detection
-- video AI algorithm cabin
+示例：
 
-Rules:
+- 客流统计
+- 车牌识别
+- 区域入侵
+- 视频 AI 算法舱
 
-- only keep the current effective version in the production library
-- archive historical versions outside the default retrieval path
-- route product questions to the matching product library first
+规则：
 
-### Layer 3: Device and Marketplace Libraries
+- 生产检索路径中只保留当前生效最新版
+- 历史版本归档，不参与默认检索
+- 用户问题命中产品后，优先查对应产品库
 
-Use separate libraries for device model documentation and marketplace goods.
+### 3. 设备与商城资料库
 
-- camera model manuals
-- marketplace goods support docs
-- model compatibility notes
+用于存放设备型号和商城商品资料。
 
-Rules:
+- 摄像头型号说明
+- 商城商品客服文档
+- 型号兼容性说明
 
-- do not mix device-model documents with product-policy documents
-- keep device compatibility information close to the device or SKU scope
+规则：
 
-### Layer 4: Internal Support Libraries
+- 不与产品政策类文档混放
+- 设备兼容信息优先按型号或 SKU 维度组织
 
-Use restricted libraries for internal-only operations content.
+### 4. 内部支持库
 
-- default credentials
-- private IP addresses
-- SSH access
-- deployment and maintenance steps
-- troubleshooting scripts
+用于存放仅内部人员可见的资料。
 
-Rules:
+- 默认账号密码
+- 私网 IP 地址
+- SSH 连接信息
+- 部署维护步骤
+- 排障脚本和内部操作说明
 
-- never expose this layer to ordinary customer-service agents
-- never include this layer in public or broad support workflows
-- require explicit role-based access
+规则：
 
-## Security Classification
+- 不向普通客服开放
+- 不进入普通客服问答工作流
+- 必须做角色权限控制
 
-Each file should be assigned one initial security level before import.
+## 三、安全分级
 
-- `PUBLIC_CS`: safe for ordinary customer-service Q&A
-- `INTERNAL_SUPPORT`: internal support knowledge, not for general agents
-- `RESTRICTED`: contains secrets, default credentials, private addresses, or infrastructure details
+每个文件入库前都必须先做安全分级。
 
-If a single document contains both customer-service content and restricted content, split it into two derived documents before import.
+- `PUBLIC_CS`：可供普通客服问答使用
+- `INTERNAL_SUPPORT`：内部支撑知识，不面向普通客服
+- `RESTRICTED`：含密钥、默认账号、私网地址、基础设施细节等敏感内容
 
-## Metadata Requirements
+如果同一份文档同时包含客服知识和敏感运维知识，必须先拆成两份再入库。
 
-Each imported document should carry these fields in the project metadata table:
+## 四、元数据要求
+
+每个入库文档至少应维护以下字段：
 
 - `source_dir`
 - `file_name`
@@ -97,97 +99,99 @@ Each imported document should carry these fields in the project metadata table:
 - `status`
 - `notes`
 
-Recommended values:
+推荐取值：
 
-- `audience_scope`: `CS_AGENT`, `INTERNAL_SUPPORT`, `RESTRICTED`
-- `import_scope`: `GLOBAL`, `PRODUCT`, `DEVICE`, `INTERNAL`
-- `status`: `CANDIDATE`, `APPROVED`, `ARCHIVED`, `BLOCKED`
+- `audience_scope`：`CS_AGENT`、`INTERNAL_SUPPORT`、`RESTRICTED`
+- `import_scope`：`GLOBAL`、`PRODUCT`、`DEVICE`、`INTERNAL`
+- `status`：`CANDIDATE`、`APPROVED`、`ARCHIVED`、`BLOCKED`
 
-## Import Rules
+## 五、入库规则
 
-### Version Governance
+### 1. 版本治理
 
-- import only one active version per product document into the production retrieval path
-- mark older versions as archived
-- if the latest version is unclear, block import until confirmed
+- 每个产品在生产检索路径中只能有一个生效版本
+- 旧版本统一标记为归档
+- 如无法判断哪个版本为最新版，则暂缓入库
 
-### Content Splitting
+### 2. 内容拆分
 
-Split documents by heading-level business meaning, not only by fixed character count.
+文档切块应按业务章节拆分，不能只按固定字数硬切。
 
-Good chunk boundaries:
+适合单独成块的章节：
 
-- product introduction
-- pricing
-- subscription rules
-- cancellation and refund rules
-- usage instructions
-- device compatibility
+- 产品介绍
+- 资费说明
+- 订购规则
+- 退订与退费规则
+- 使用说明
+- 设备兼容性
 - FAQ
 
-Avoid combining multiple business intents in the same chunk when the document already has clear section headings.
+如果文档本身已有明确标题层级，不应把多个业务意图混在同一块中。
 
-### Sensitive Content Handling
+### 3. 敏感信息处理
 
-Before import, scan for:
+入库前必须扫描以下内容：
 
-- private IP ranges
-- default usernames and passwords
-- SSH references
-- admin portal addresses
-- phrases such as "internal use only"
+- 私网 IP 地址
+- 默认用户名和密码
+- SSH 相关信息
+- 管理后台地址
+- “仅内部使用”“不对外提供”等表述
 
-If matched:
+如果命中：
 
-- mark the file `RESTRICTED`
-- do not import it into the ordinary support library
-- either redact it or create an internal-only copy
+- 文档标记为 `RESTRICTED`
+- 不进入普通客服知识库
+- 先脱敏，或生成内部专用版本
 
-## Routing Strategy
+## 六、检索与路由策略
 
-Production routing should prefer deterministic scope over broad retrieval.
+生产环境中应优先采用“确定范围检索”，而不是“全库大范围召回”。
 
-1. detect intent and product
-2. query the matching product or device library
-3. optionally query the global policy library
-4. merge and generate the final structured answer
-5. if the answer requires implementation-only knowledge, escalate to internal support instead of exposing restricted content
+推荐流程：
 
-## FastGPT Mapping
+1. 识别用户意图和产品
+2. 先查询对应产品库或设备库
+3. 必要时补查全局规则库
+4. 合并结果后生成结构化回答
+5. 如问题涉及内部实施信息，则升级到内部支持，不直接暴露敏感内容
 
-Recommended FastGPT application layout:
+## 七、FastGPT 映射建议
 
-1. one global support application
-2. one product-support application template
-3. one internal-support application
+推荐的 FastGPT 应用结构：
 
-Recommended dataset layout:
+1. 一个全局客服应用
+2. 一个产品客服应用模板
+3. 一个内部支持应用
 
-1. one dataset for global policy
-2. one dataset per product or product family
-3. one dataset per device family when device questions are common
-4. one or more restricted internal datasets
+推荐的数据集结构：
 
-Do not rely on prompt-only scope control for single-document or sensitive-content isolation.
+1. 一个全局规则数据集
+2. 每个产品或产品族一个数据集
+3. 设备问题较多时，每个设备族一个数据集
+4. 一个或多个受限内部数据集
 
-## Suggested Operating Process
+不要依赖 prompt 文字限制去实现单文档隔离或敏感信息隔离。
 
-1. scan incoming directories and build an inventory
-2. extract product, version, date, and channel from file names
-3. detect sensitive content from raw text
-4. identify latest version per product key
-5. manually review blocked or ambiguous files
-6. split or redact mixed-scope documents
-7. import approved files to the target dataset
-8. record import results and FastGPT collection identifiers
+## 八、推荐操作流程
 
-## Immediate Use In This Repo
+1. 扫描待入库目录，生成文档清单
+2. 从文件名中提取产品、版本、日期、渠道等信息
+3. 从正文中识别敏感信息
+4. 按产品键识别最新版
+5. 人工复核不明确或被拦截的文件
+6. 对混合范围文档做拆分或脱敏
+7. 将通过审核的文件导入目标数据集
+8. 记录导入结果和 FastGPT 的 `collectionId`
 
-This repository now includes a directory scanning script intended to generate:
+## 九、在本仓库中的使用方式
 
-- JSON inventory
-- CSV inventory
-- duplicate version groups
-- sensitive-file candidates
+当前仓库已提供一个目录扫描脚本，可用于生成：
 
-Use that inventory as the source of truth before importing new document batches.
+- JSON 清单
+- CSV 清单
+- 重复版本组
+- 敏感文件候选列表
+
+后续所有批量入库动作，都应以该清单为基线，而不是直接对源目录执行导入。

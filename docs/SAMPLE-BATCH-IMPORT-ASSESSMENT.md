@@ -1,56 +1,58 @@
-# Sample Batch Import Assessment
+# 样本批次入库评估
 
-## Scope
+## 一、范围
 
-This assessment summarizes the two sample document folders reviewed on 2026-03-07 for production import planning.
+本评估基于 2026-03-07 审查的两批样本资料，目的是为生产入库提供初步判断。
 
-Reviewed batches:
+已审查批次：
 
-1. Tianyi Home AI product customer-service documents
-2. Mixed marketplace, client, and ICT support documents
+1. 天翼看家 AI 产品客服资料批次
+2. 商城设备、客户端、ICT 混合资料批次
 
-## Batch Summary
+## 二、批次概览
 
-Scanned totals:
+扫描结果：
 
-- 29 files total
-- 27 `.docx` documents
-- 2 `.xlsx` spreadsheet files
+- 共 29 个文件
+- 27 个 `.docx`
+- 2 个 `.xlsx`
 
-Initial classification outcome from the scanner:
+初步分类结果：
 
-- `PUBLIC_CS`: 28
-- `RESTRICTED`: 1
+- `PUBLIC_CS`：28
+- `RESTRICTED`：1
 
-Restricted file identified:
+当前识别出的受限文件：
 
 - `天翼视联-翼智企标准 ICT 业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx`
 
-Restriction reason:
+受限原因：
 
-- private IP addresses
-- default credentials
-- SSH-related operational details
+- 包含私网 IP 地址
+- 包含默认账号密码
+- 包含 SSH 相关运维信息
 
-## Recommended Import Structure
+## 三、建议的入库结构
 
-### Global Reference
+### 1. 全局参考层
 
-Use this layer for spreadsheet or FAQ-style reference content after manual review.
+适用于表格类总表、FAQ 索引类资料，但进入问答前必须人工确认。
+
+候选文件：
 
 - `天翼视联产品F&Q.xlsx`
 - `视联网知识库-AI产品.xlsx`
 
-Rules:
+规则：
 
-- verify whether the spreadsheet is an index or true answer source
-- if it only serves as an inventory, keep it outside retrieval and use it as metadata input
+- 先确认其用途是“问答源”还是“管理台账”
+- 如果只是索引或台账，则不进入检索链路，只作为元数据来源
 
-### Product Libraries
+### 2. 产品客服库
 
-Create separate product datasets for the Home AI product batch.
+针对“天翼看家 AI 产品”批次，建议按产品单独建库。
 
-Recommended product datasets:
+建议产品数据集：
 
 - `产品-天翼看家-客流统计`
 - `产品-天翼看家-车牌识别`
@@ -72,16 +74,16 @@ Recommended product datasets:
 - `产品-天翼看家-智能筛选`
 - `产品-天翼看家-智能搜索`
 
-Additional product datasets:
+补充产品数据集：
 
 - `产品-视联百川客户端`
 - `产品-行业版AI产品政企版`
 
-### Device Libraries
+### 3. 设备资料库
 
-Keep device and marketplace support docs separate from product-policy documents.
+商城和设备类资料应与产品政策类资料分开。
 
-Recommended device datasets:
+建议设备数据集：
 
 - `设备-赋之科技移动机器人(EBO-SE)`
 - `设备-赛达网络摄像头(SD-H680)`
@@ -89,42 +91,42 @@ Recommended device datasets:
 - `设备-可当超清摄像机xk001-A10`
 - `设备-赛达超清云台摄像机H681`
 
-### Internal Restricted Libraries
+### 4. 内部受限库
 
-Do not import restricted mixed-content files into the ordinary support path.
+受限混合文档不应直接进入普通客服知识库。
 
-Current blocked item:
+当前阻塞项：
 
 - `内部-视频AI算法舱`
 
-Required action before import:
+入库前必须执行：
 
-1. split the document into customer-service content and internal operations content
-2. redact private URLs and default credentials from the customer-service copy
-3. keep the internal-only copy in a restricted support dataset
+1. 将文档拆分为“客服知识版”和“内部运维版”
+2. 从客服版中移除私网地址、默认账号、默认密码
+3. 将内部版放入受限内部数据集
 
-## Recommended Immediate Actions
+## 四、建议的近期动作
 
-### Ready To Import
+### 1. 可优先导入
 
-These are suitable as first-wave customer-service import candidates:
+这些文档适合作为第一批客服知识导入对象：
 
-- Home AI product customer-service documents
-- marketplace device support documents
-- client support document
-- industry edition support document
+- 天翼看家 AI 产品客服文档
+- 商城设备客服文档
+- 视联百川客户端客服文档
+- 行业版 AI 产品政企版客服文档
 
-### Review Before Import
+### 2. 需要人工复核
 
-These require a manual check:
+以下文件应在导入前先确认用途：
 
-- both spreadsheets
-- any large comprehensive document that may mix product policy with operations content
+- 两份 Excel 表格
+- 任意超大综合性文档，确认是否混入内部运维说明
 
-### Block For Now
+### 3. 当前应阻塞
 
 - `天翼视联-翼智企标准 ICT 业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx`
 
-## Operational Recommendation
+## 五、执行建议
 
-For the next implementation step, generate an import manifest from the scanner output and use that manifest as the review checklist before any FastGPT dataset import.
+下一步应先根据扫描结果生成正式导入清单，并以该清单作为 FastGPT 入库前的审核基线，而不是直接批量导入源文件。
