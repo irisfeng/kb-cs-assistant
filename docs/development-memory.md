@@ -116,3 +116,31 @@
 ### FastGPT Workflow Follow-up
 - The backend now also passes `sourceName` alongside `collectionId` to the solution-scoped FastGPT workflow variables.
 - FastGPT workflow-side filtering still needs to be aligned so the knowledge-search node and AI response node consistently respect the current document scope and preserve quote metadata.
+
+## 2026-03-08
+
+### Local Verification
+- Confirmed the local frontend (`5173`), backend (`3001`), and FastGPT (`3000`) were all reachable at the same time.
+- Confirmed `GET /api/knowledge/submissions` and `GET /api/solutions` both returned `200` during the verification session.
+- Verified the API path `submit -> approve -> publish` with a temporary Markdown document.
+- Verified the same path again with a real `.docx` customer-service document.
+- Verified the homepage UI path `submit -> approve -> publish` through the actual frontend, not only the API.
+- Verified single-document preview, document-scoped chat, and global chat all returned structured answers.
+- Verified spreadsheet intake still routes to `EXTRACT_THEN_IMPORT` instead of direct publish.
+- Verified internal-support submissions remain blocked from publish when `FASTGPT_INTERNAL_DATASET_ID` is not configured.
+
+### Local Environment Handling
+- The local `BASE_URL` value originally pointed to `http://kb-server.local:3001` and returned `502` in this machine's current network setup.
+- Created a local backup at `server/.env.backup-20260308-baseurl`.
+- Updated the local-only `.env` `BASE_URL` to a Docker-reachable LAN address for this machine so FastGPT can fetch backend-hosted assets during local testing.
+- Confirmed the FastGPT container could reach the backend via the adjusted LAN address.
+
+### Frontend Follow-up
+- Improved frontend submission/review/publish error handling so toast messages now prefer the backend's returned error text instead of showing only generic failure text.
+- Confirmed `client/npm run build` still passed after the frontend error-handling change.
+
+### Test Record
+- Added [docs/LOCAL-VERIFICATION-2026-03-08.md](C:/Users/tonif/Documents/trae_projects/kb-cs-assistant/docs/LOCAL-VERIFICATION-2026-03-08.md) as the detailed local verification log for this round.
+
+### Remaining Note
+- The local `.env` adjustment is intentionally not committed; it is a machine-specific test change, not a shared repo default.

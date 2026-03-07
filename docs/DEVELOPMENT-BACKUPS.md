@@ -12,3 +12,11 @@ This file records important local or remote backup points during the customer se
   - structured reply rendering
   - capability data cleanup
   - acceptance scenario checklist
+
+## 2026-03-08
+
+- Local backup created before adjusting the local callback base URL:
+  - `server/.env.backup-20260308-baseurl`
+- Purpose:
+  - preserve the original `.env` before changing `BASE_URL`
+  - keep a rollback point for the local-only FastGPT callback path

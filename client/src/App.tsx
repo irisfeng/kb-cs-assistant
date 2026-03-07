@@ -42,6 +42,39 @@ import type { ProductCapability } from './types/capability';
 const ITEMS_PER_PAGE = 12;
 type UploadStatus = 'idle' | 'queued' | 'processing' | 'success' | 'failed';
 
+function getApiErrorMessage(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) {
+    return null;
+  }
+
+  const data = error.response?.data;
+  if (!data) {
+    return null;
+  }
+
+  if (typeof data === 'string' && data.trim()) {
+    return data;
+  }
+
+  if (typeof data.error === 'string' && data.error.trim()) {
+    return data.error;
+  }
+
+  if (typeof data.message === 'string' && data.message.trim()) {
+    return data.message;
+  }
+
+  if (typeof data.details?.error === 'string' && data.details.error.trim()) {
+    return data.details.error;
+  }
+
+  if (typeof data.code === 'string' && data.code.trim()) {
+    return data.code;
+  }
+
+  return null;
+}
+
 function App() {
   const { t, i18n } = useTranslation();
   const { showSuccess, showError } = useToast();
@@ -270,16 +303,17 @@ function App() {
       setUploadStatusMessage('');
     } catch (error) {
       console.error('Upload failed', error);
+      const errorMessage = getApiErrorMessage(error);
       setUploadProgress(0);
       setUploadStatus('failed');
       setUploadStatusMessage(
-        axios.isAxiosError(error) && error.response?.data?.error
-          ? error.response.data.error
+        errorMessage
+          ? errorMessage
           : i18n.language === 'zh'
             ? '提交失败，请检查文件内容或稍后重试。'
             : 'Submission failed. Please retry in a moment.',
       );
-      showError(i18n.language === 'zh' ? '知识提报失败' : 'Knowledge submission failed');
+      showError(errorMessage || (i18n.language === 'zh' ? '知识提报失败' : 'Knowledge submission failed'));
     } finally {
       setUploading(false);
     }
@@ -307,7 +341,7 @@ function App() {
       );
     } catch (error) {
       console.error('Knowledge submission review failed', error);
-      showError(i18n.language === 'zh' ? '审核失败' : 'Review failed');
+      showError(getApiErrorMessage(error) || (i18n.language === 'zh' ? '审核失败' : 'Review failed'));
     } finally {
       setSubmissionActionId(null);
     }
@@ -321,7 +355,7 @@ function App() {
       showSuccess(i18n.language === 'zh' ? '知识已发布入库' : 'Knowledge published');
     } catch (error) {
       console.error('Knowledge submission publish failed', error);
-      showError(i18n.language === 'zh' ? '发布失败' : 'Publish failed');
+      showError(getApiErrorMessage(error) || (i18n.language === 'zh' ? '发布失败' : 'Publish failed'));
     } finally {
       setSubmissionActionId(null);
     }
