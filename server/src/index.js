@@ -44,6 +44,15 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const upload = multer({ dest: "uploads/" });
 const LEGACY_DRAFTS_ENABLED = process.env.ENABLE_LEGACY_DRAFTS === "true";
+const FASTGPT_GLOBAL_APP_KEY = process.env.FASTGPT_GLOBAL_APP_KEY;
+const FASTGPT_GLOBAL_APP_MODEL =
+  process.env.FASTGPT_GLOBAL_APP_MODEL || "tysl-local-app-global-v2";
+const FASTGPT_SOLUTION_APP_KEY =
+  process.env.FASTGPT_SOLUTION_APP_KEY || process.env.FASTGPT_WORKFLOW_KEY;
+const FASTGPT_SOLUTION_APP_MODEL =
+  process.env.FASTGPT_SOLUTION_APP_MODEL ||
+  process.env.FASTGPT_WORKFLOW_MODEL ||
+  "solution-kb-chat";
 const LEGACY_DRAFTS_DISABLED_RESPONSE = {
   error:
     "Legacy draft and PPT endpoints are disabled in the customer service knowledge system.",
@@ -1734,6 +1743,11 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
     );
     console.log("[SolutionChat] Session ID:", resolvedSessionId);
     console.log("[SolutionChat] FastGPT Chat ID:", fastGptChatId || "(fresh per request)");
+    console.log("[SolutionChat] FastGPT app channel:", FASTGPT_SOLUTION_APP_MODEL);
+
+    if (!FASTGPT_SOLUTION_APP_KEY) {
+      throw new Error("FASTGPT_SOLUTION_APP_KEY or FASTGPT_WORKFLOW_KEY is not configured");
+    }
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
@@ -1744,7 +1758,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
     });
 
     const requestBody = {
-      model: "solution-kb-chat",
+      model: FASTGPT_SOLUTION_APP_MODEL,
       chatId: fastGptChatId,
       stream: true,
       detail: true,
@@ -1769,7 +1783,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
       requestBody,
       {
         headers: {
-          Authorization: `Bearer ${process.env.FASTGPT_WORKFLOW_KEY}`,
+          Authorization: `Bearer ${FASTGPT_SOLUTION_APP_KEY}`,
           "Content-Type": "application/json",
         },
         responseType: "stream",
@@ -2472,10 +2486,11 @@ app.post("/api/chat", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    console.log(
-      "[Debug GlobalChat] Using FASTGPT_WORKFLOW_KEY:",
-      process.env.FASTGPT_WORKFLOW_KEY?.substring(0, 20) + "...",
-    );
+    if (!FASTGPT_GLOBAL_APP_KEY) {
+      throw new Error("FASTGPT_GLOBAL_APP_KEY is not configured");
+    }
+
+    console.log("[Debug GlobalChat] Using FastGPT app channel:", FASTGPT_GLOBAL_APP_MODEL);
     console.log("[Debug GlobalChat] Session ID:", resolvedSessionId);
     console.log("[Debug GlobalChat] FastGPT Chat ID:", fastGptChatId || "(fresh per request)");
 
@@ -2500,15 +2515,16 @@ app.post("/api/chat", async (req, res) => {
     const response = await axios.post(
       `${process.env.FASTGPT_BASE_URL}/v1/chat/completions`,
       {
-        model: "solution-kb-chat",
+        model: FASTGPT_GLOBAL_APP_MODEL,
         chatId: fastGptChatId,
         stream: true, // Enable streaming
         detail: true,
-        messages: [{ role: "system", content: GLOBAL_CUSTOMER_SERVICE_PROMPT }, ...retrievalAwareMessages],
+        // Let the published FastGPT app own the knowledge scope and answer policy.
+        messages: retrievalAwareMessages,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.FASTGPT_WORKFLOW_KEY}`,
+          Authorization: `Bearer ${FASTGPT_GLOBAL_APP_KEY}`,
           "Content-Type": "application/json",
         },
         responseType: "stream",

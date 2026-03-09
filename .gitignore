@@ -26,6 +26,9 @@ server/uploads/
 # Temporary files
 uploads/temp_*.zip
 *.tmp
+.playwright-cli/
+output/
+tmp/
 
 # IDE
 .vscode/
@@ -46,6 +49,6 @@ nul
 aux
 con
 prn
-com*
-lpt*
+/com*
+/lpt*
 !docs/COMPREHENSIVE-*.md

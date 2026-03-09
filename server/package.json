@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "xlsx:qa-csv": "node src/scripts/export-xlsx-fastgpt-qa.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

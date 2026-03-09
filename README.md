@@ -37,11 +37,20 @@ Recommended values:
 
 - `FASTGPT_BASE_URL=http://localhost:3000`
 - `FASTGPT_DATASET_ID=...`
+- `FASTGPT_DATASET_HOME_AI=...` for `HOME_AI` product-line submissions
+- `FASTGPT_DATASET_BAICHUAN=...` for `CLIENT`/视联百川 submissions
+- `FASTGPT_DATASET_B2B_ICT=...` for `GENERAL`/`ICT` product-line submissions
+- `FASTGPT_DATASET_DEVICE_SHOP=...` for marketplace device submissions
+- `FASTGPT_DATASET_EBO=...` for EBO-specific marketplace submissions
 - `FASTGPT_PUBLIC_DATASET_ID=...` for normal customer-service assets
 - `FASTGPT_INTERNAL_DATASET_ID=...` for internal-support-only assets
 - `FASTGPT_API_KEY=...`
 - `FASTGPT_APP_KEY=...`
 - `FASTGPT_WORKFLOW_KEY=...`
+- `FASTGPT_GLOBAL_APP_KEY=...` for global Q&A app access
+- `FASTGPT_GLOBAL_APP_MODEL=tysl-local-app-global-v2` (or your global FastGPT app channel)
+- `FASTGPT_SOLUTION_APP_KEY=...` for single-document Q&A (falls back to `FASTGPT_WORKFLOW_KEY`)
+- `FASTGPT_SOLUTION_APP_MODEL=solution-kb-chat` (single-document FastGPT app channel)
 - `ENABLE_LEGACY_DRAFTS=false` to keep old draft/PPT endpoints disabled in the main customer-service path
 
 ## Frontend Setup
@@ -108,6 +117,13 @@ To extract Q&A spreadsheets and device compatibility sheets into import-ready Ma
 ```bash
 cd server
 node src/scripts/extract-xlsx-knowledge.js --file="C:\\path\\to\\知识素材.xlsx" --output="C:\\path\\to\\xlsx-derived-output"
+```
+
+To export spreadsheet Q&A pairs into FastGPT template CSV format (`q,a,indexes`):
+
+```bash
+cd server
+node src/scripts/export-xlsx-fastgpt-qa.js --file="C:\\path\\to\\sheet-a.xlsx" --file="C:\\path\\to\\sheet-b.xlsx" --output="C:\\path\\to\\qa-csv-output"
 ```
 
 ## Notes

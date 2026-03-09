@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
 type Theme = 'light' | 'dark';
@@ -25,41 +25,31 @@ interface ThemeProviderProps {
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  // 从 localStorage 读取主题，默认为 dark
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme');
-    return (saved === 'light' || saved === 'dark') ? saved : 'dark';
+    return saved === 'light' || saved === 'dark' ? saved : 'light';
   });
 
-  // 从 localStorage 读取 sidebar 状态，默认为展开
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
     return saved === 'true';
   });
 
   useEffect(() => {
-    // 更新 localStorage
     localStorage.setItem('theme', theme);
-
-    // 更新 document 的 class
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
   useEffect(() => {
-    // 保存 sidebar 状态到 localStorage
     localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    setTheme((previous) => (previous === 'light' ? 'dark' : 'light'));
   };
 
   const toggleSidebar = () => {
-    setSidebarCollapsed(prev => !prev);
+    setSidebarCollapsed((previous) => !previous);
   };
 
   return (

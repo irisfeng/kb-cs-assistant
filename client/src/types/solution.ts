@@ -109,7 +109,8 @@ export type ViewMode =
   | 'solutions'
   | 'upload'
   | 'solution-detail'
-  | 'capabilities';
+  | 'capabilities'
+  | 'governance';
 
 export interface DraftOutlineSlide {
   number: number;

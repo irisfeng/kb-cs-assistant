@@ -328,7 +328,61 @@ export function sanitizeKnowledgeSubmission(submission) {
 
 export function resolveDatasetIdForSubmission(submission, env = process.env) {
   if (submission.audienceScope === "INTERNAL_SUPPORT") {
-    return env.FASTGPT_INTERNAL_DATASET_ID || "";
+    return (
+      env.FASTGPT_INTERNAL_DATASET_ID ||
+      env.FASTGPT_DATASET_B2B_ICT ||
+      env.FASTGPT_DATASET_ID ||
+      ""
+    );
+  }
+
+  const fileName = ensureValue(submission.fileName);
+  const productLine = ensureValue(submission.productLine).toUpperCase();
+
+  if (productLine === "HOME_AI") {
+    return (
+      env.FASTGPT_DATASET_HOME_AI ||
+      env.FASTGPT_PUBLIC_DATASET_ID ||
+      env.FASTGPT_DATASET_ID ||
+      ""
+    );
+  }
+
+  if (productLine === "CLIENT") {
+    return (
+      env.FASTGPT_DATASET_BAICHUAN ||
+      env.FASTGPT_PUBLIC_DATASET_ID ||
+      env.FASTGPT_DATASET_ID ||
+      ""
+    );
+  }
+
+  if (productLine === "ICT" || productLine === "GENERAL") {
+    return (
+      env.FASTGPT_DATASET_B2B_ICT ||
+      env.FASTGPT_PUBLIC_DATASET_ID ||
+      env.FASTGPT_DATASET_ID ||
+      ""
+    );
+  }
+
+  if (productLine === "MARKETPLACE") {
+    const isEbo = /EBO-SE/i.test(fileName);
+    if (isEbo) {
+      return (
+        env.FASTGPT_DATASET_EBO ||
+        env.FASTGPT_DATASET_DEVICE_SHOP ||
+        env.FASTGPT_PUBLIC_DATASET_ID ||
+        env.FASTGPT_DATASET_ID ||
+        ""
+      );
+    }
+    return (
+      env.FASTGPT_DATASET_DEVICE_SHOP ||
+      env.FASTGPT_PUBLIC_DATASET_ID ||
+      env.FASTGPT_DATASET_ID ||
+      ""
+    );
   }
 
   return env.FASTGPT_PUBLIC_DATASET_ID || env.FASTGPT_DATASET_ID || "";
