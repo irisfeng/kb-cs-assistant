@@ -7,7 +7,13 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "xlsx:qa-csv": "node src/scripts/export-xlsx-fastgpt-qa.js"
+    "fastgpt:import-text": "node src/scripts/import-fastgpt-text.js",
+    "fastgpt:import-direct-docx": "node src/scripts/import-direct-docx-batch.js",
+    "fastgpt:reimport-mineru-docx": "node src/scripts/import-mineru-docx-batch.js",
+    "fastgpt:verify-mineru": "node src/scripts/verify-mineru-reimports.js",
+    "fastgpt:import-derived-markdown": "node src/scripts/import-derived-markdown-batch.js",
+    "xlsx:qa-csv": "node src/scripts/export-xlsx-fastgpt-qa.js",
+    "solutions:recover": "node src/scripts/recover-solutions-from-fastgpt.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

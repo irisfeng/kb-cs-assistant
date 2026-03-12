@@ -38,6 +38,7 @@ import {
   resolveDatasetIdForSubmission,
   sanitizeKnowledgeSubmission,
 } from "./knowledge-workflow.js";
+import { parseWithMinerU as parseWithMinerUClient } from "./mineru-client.js";
 
 // Note: generatePPTFromImages is not fully implemented, generatePPT is used as fallback
 
@@ -111,6 +112,26 @@ async function uploadImageToFastGPT(imageBuffer, fileName) {
     }
     return null;
   }
+}
+
+async function deleteFastGptCollections(collectionIds = []) {
+  const ids = [...new Set(collectionIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (ids.length === 0) {
+    return;
+  }
+
+  await axios.post(
+    `${process.env.FASTGPT_BASE_URL}/core/dataset/collection/delete`,
+    {
+      collectionIds: ids,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
 }
 
 /**
@@ -1110,33 +1131,7 @@ async function pollMinerUResult(batchId, maxAttempts = 60, interval = 3000) {
  * 支持: PDF, DOC, DOCX, PPT, PPTX, PNG, JPG, JPEG, HTML
  */
 async function parseWithMinerU(filePath, fileName) {
-  const dataId = `file_${Date.now()}`;
-
-  // 1. 申请上传链接
-  console.log("Applying MinerU upload URL...");
-  const { batchId, uploadUrl } = await applyMinerUUploadUrl(fileName, dataId);
-
-  // 2. 上传文件
-  console.log("Uploading file to MinerU...");
-  await uploadFileToMinerU(filePath, uploadUrl);
-
-  // 3. 轮询查询结果
-  console.log("Polling MinerU result...");
-  const result = await pollMinerUResult(batchId);
-
-  // 4. 返回完整结果（使用 HTTP URL 版本，因为 hosts 已修复）
-  console.log("[FastGPT] Using HTTP URL version for FastGPT (hosts fixed)");
-
-  // 5. 返回完整结果
-  return {
-    text: result.fastGptMarkdown || result.markdown, // 发送给 FastGPT 的内容（使用 HTTP URL 版本）
-    localMarkdown: result.markdown, // 本地路径版本的 markdown（用于预览）
-    base64Markdown: result.base64Markdown, // base64 版本的 markdown（兼容）
-    fastGPTMarkdown: result.fastGptMarkdown, // FastGPT 专用版本（HTTP URL）
-    batchId: result.batchId,
-    imageCount: result.imageCount,
-    source: "mineru-api",
-  };
+  return parseWithMinerUClient(filePath, fileName);
 }
 
 async function importDocumentToKnowledgeBase({
@@ -2035,128 +2030,23 @@ app.delete("/api/solutions/:id", async (req, res) => {
 
     // Delete from FastGPT if collectionId exists
     if (solution.collectionId && solution.collectionId !== "local-parsed") {
-      let deleted = false;
-      const errors = [];
-
-      // Try Method 1: /api/core/dataset/collection/deleteById
       try {
-        console.log(
-          `[Delete] Method 1: POST /api/core/dataset/collection/deleteById`,
-        );
-        const res1 = await axios.post(
-          `${process.env.FASTGPT_BASE_URL}/api/core/dataset/collection/deleteById`,
-          {
-            collectionId: solution.collectionId,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-        console.log(`[Delete] Method 1 succeeded:`, res1.status);
-        deleted = true;
-      } catch (err) {
-        errors.push(`Method 1 (/api/...): ${err.message}`);
-        if (err.response) {
-          errors.push(`  Status: ${err.response.status}`);
-          if (err.response.data) {
-            errors.push(
-              `  Data: ${JSON.stringify(err.response.data).substring(0, 300)}`,
-            );
-          }
-        }
-      }
-
-      // Try Method 2: /v1/dataset/collection/delete
-      if (!deleted) {
-        try {
-          console.log(`[Delete] Method 2: POST /v1/dataset/collection/delete`);
-          const res2 = await axios.post(
-            `${process.env.FASTGPT_BASE_URL}/v1/dataset/collection/delete`,
-            {
-              collectionId: solution.collectionId,
-              datasetId: process.env.FASTGPT_DATASET_ID,
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            },
-          );
-          console.log(`[Delete] Method 2 succeeded:`, res2.status);
-          deleted = true;
-        } catch (err) {
-          errors.push(`Method 2 (/v1/dataset/...): ${err.message}`);
-          if (err.response) {
-            errors.push(`  Status: ${err.response.status}`);
-            if (err.response.data) {
-              errors.push(
-                `  Data: ${JSON.stringify(err.response.data).substring(0, 300)}`,
-              );
-            }
-          }
-        }
-      }
-
-      // Try Method 3: Get collection detail first, then delete
-      if (!deleted) {
-        try {
-          console.log(
-            `[Delete] Method 3: GET /api/core/dataset/collection/detail`,
-          );
-          const detailRes = await axios.get(
-            `${process.env.FASTGPT_BASE_URL}/api/core/dataset/collection/detail`,
-            {
-              params: {
-                collectionId: solution.collectionId,
-                datasetId: process.env.FASTGPT_DATASET_ID,
-              },
-              headers: {
-                Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-              },
-            },
-          );
-
-          console.log(
-            `[Delete] Got collection detail:`,
-            detailRes.data?.data?.name,
-          );
-
-          // Now try to delete it using same API
-          const deleteRes = await axios.post(
-            `${process.env.FASTGPT_BASE_URL}/api/core/dataset/collection/deleteById`,
-            {
-              collectionId: solution.collectionId,
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            },
-          );
-          console.log(`[Delete] Method 3 succeeded:`, deleteRes.status);
-          deleted = true;
-        } catch (err) {
-          errors.push(`Method 3 (detail then delete): ${err.message}`);
-          if (err.response) {
-            errors.push(`  Status: ${err.response.status}`);
-          }
-        }
-      }
-
-      if (deleted) {
+        await deleteFastGptCollections([solution.collectionId]);
         console.log(
           `[Delete] Successfully deleted collection ${solution.collectionId} from FastGPT`,
         );
-      } else {
+      } catch (fastgptError) {
         console.warn(
-          `[Delete] All methods failed for collection ${solution.collectionId}:`,
+          "[Delete] Failed to delete collection from FastGPT:",
+          fastgptError.message,
         );
-        errors.forEach((e) => console.warn(`  - ${e}`));
+        if (fastgptError.response) {
+          console.warn("[Delete] FastGPT status:", fastgptError.response.status);
+          console.warn(
+            "[Delete] FastGPT response:",
+            JSON.stringify(fastgptError.response.data).substring(0, 500),
+          );
+        }
       }
     }
 
@@ -2933,19 +2823,7 @@ app.delete("/api/capabilities/:id", async (req, res) => {
     // Delete from FastGPT if collectionId exists
     if (capability.collectionId) {
       try {
-        await axios.post(
-          `${process.env.FASTGPT_BASE_URL}/core/dataset/collection/delete`,
-          {
-            datasetId: process.env.FASTGPT_DATASET_ID,
-            collectionId: capability.collectionId,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
+        await deleteFastGptCollections([capability.collectionId]);
         console.log(`[Capability] Deleted from FastGPT: ${capability.name}`);
       } catch (fastgptError) {
         console.warn(
