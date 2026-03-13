@@ -5,7 +5,7 @@
 - 本轮共拆分并导入 `216` 对 Q&A。
 - `视频AI算法舱` 相关 `11` 条原始 Q&A 未进入普通客服库，继续按内部支持脱敏路径处理。
 - FastGPT 侧验证结果：`5/5` 目标知识库全部通过。
-- 当前全局 `/api/chat` 还不会直接吃到这些新产品 Q&A，因为已发布的全局 workflow 仍主要挂载 SOP/规则类知识库，而不是这些产品知识库。
+- 全局 workflow 已补充 5 个产品知识库，并完成 `/api/chat` 烟雾回归，当前产品问法已能命中引用返回。
 
 ## 产物
 - 拆分脚本：
@@ -69,14 +69,31 @@
 验证报告：
 - [qa-verify-2026-03-13T12-44-29-560Z.json](/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/qa-verify-20260313/qa-verify-2026-03-13T12-44-29-560Z.json)
 
+## 全局 workflow 联调
+- 已在本地 FastGPT 社区版 UI 中更新已发布工作流：
+  - 应用：`tysl-local-app-global-v2`
+  - `appId = 69ad0ba2515619370eac7129`
+- 知识库搜索节点已新增：
+  - `tysl-local-kb-device-shop`
+  - `tysl-local-kb-b2b-ict`
+  - `tysl-local-kb-baichuan`
+  - `tysl-local-kb-home-ai`
+  - `tysl-local-kb-ebo`
+- 已保存并发布到现有发布渠道，后端 `/api/chat` 无需改代码即可生效。
+
 ## 用户侧烟雾验证
 - 我用 `/api/chat` 按真实问法抽测了 `baichuan / ebo / device-shop / home-ai / b2b-ict`。
-- 结果说明：
-  - 新 Q&A collection 已经成功入库。
-  - 但当前全局问答 workflow 还没有把这些产品知识库纳入主要检索范围，所以多数问法仍走保守兜底。
-  - `device-shop` 的测试问法命中了现有激活绑定相关知识并返回引用，但这不是新 Q&A collection 直接生效的证据，而是现有全局 SOP 在工作。
+- 结果：
+  - `baichuan`：通过，`8` 条引用，首条命中 `天翼视联产品F&Q-视联百川问答库.txt`
+  - `ebo`：通过，`6` 条引用，命中 EBO 产品问答库
+  - `device-shop`：通过，`7` 条引用，命中设备商城相关问答/激活知识
+  - `home-ai`：通过，`7` 条引用，命中车牌识别相关问答
+  - `b2b-ict`：通过，`5` 条引用，首条命中 `视联网知识库-AI产品-政企版问答库.txt`
+- 说明：
+  - 新 Q&A collection 已被全局 workflow 检索范围覆盖。
+  - 部分问题的首条引用仍可能落在此前已存在的产品问答库或派生问答库上，这属于正常现象；本轮导入的汇总 Q&A collection 主要起补全覆盖和增强召回作用。
 
 ## 后续建议
-1. 如果希望全局问答直接利用这些新 Q&A，需要更新已发布的全局 FastGPT workflow，把相关产品知识库纳入检索范围。
-2. 单文档链路暂时不依赖这批 Q&A collection，可继续保持当前方案。
-3. 这轮 Excel 处理完成后，可以准备合并 `codex/knowledge-governance -> main`。
+1. 单文档链路暂时不依赖这批 Q&A collection，可继续保持当前方案。
+2. 这轮 Excel 处理完成后，可以准备合并 `codex/knowledge-governance -> main`。
+3. 合并前如果还想再稳一点，建议补一轮前端页面人工抽问验证。

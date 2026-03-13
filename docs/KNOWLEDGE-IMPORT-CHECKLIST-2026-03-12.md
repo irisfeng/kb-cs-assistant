@@ -133,7 +133,8 @@
 
 ### 验证结论
 - FastGPT 侧验证 `5/5` 通过
-- 用户侧补充验证显示：当前全局 workflow 仍未直接纳入这些产品知识库，所以 `/api/chat` 侧还不会自动吃到这批新 Q&A；这属于 workflow 范围问题，不是导入失败
+- 后续已在本地 FastGPT 社区版 UI 中更新 `tysl-local-app-global-v2` 的知识库搜索节点，把 `baichuan / ebo / device-shop / home-ai / b2b-ict` 纳入全局检索范围
+- `/api/chat` 二次烟雾验证通过，5 类产品问法均可返回内容和引用
 
 ## 推荐执行顺序
 1. 先导入 26 份 docx 主文档
