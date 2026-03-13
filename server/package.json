@@ -9,10 +9,13 @@
     "dev": "node --watch src/index.js",
     "fastgpt:import-text": "node src/scripts/import-fastgpt-text.js",
     "fastgpt:import-direct-docx": "node src/scripts/import-direct-docx-batch.js",
+    "fastgpt:import-qa": "node src/scripts/import-fastgpt-qa-batch.js",
+    "fastgpt:verify-qa": "node src/scripts/verify-fastgpt-qa-imports.js",
     "fastgpt:reimport-mineru-docx": "node src/scripts/import-mineru-docx-batch.js",
     "fastgpt:verify-mineru": "node src/scripts/verify-mineru-reimports.js",
     "fastgpt:import-derived-markdown": "node src/scripts/import-derived-markdown-batch.js",
     "xlsx:qa-csv": "node src/scripts/export-xlsx-fastgpt-qa.js",
+    "xlsx:qa-split": "node src/scripts/split-fastgpt-qa-by-dataset.js",
     "solutions:recover": "node src/scripts/recover-solutions-from-fastgpt.js"
   },
   "dependencies": {

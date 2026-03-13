@@ -89,10 +89,56 @@
 - `视联网知识库-AI产品.xlsx`: 136 对
   - [fastgpt-qa-template.csv](/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/qa-ai-20260312/fastgpt-qa-template.csv)
 
+## Q&A CSV 拆分导入结果（2026-03-13）
+
+### 脚本与产物
+- 拆分脚本：
+  - [split-fastgpt-qa-by-dataset.js](/Users/tony/Documents/GitHub/kb-cs-assistant/server/src/scripts/split-fastgpt-qa-by-dataset.js)
+- 导入脚本：
+  - [import-fastgpt-qa-batch.js](/Users/tony/Documents/GitHub/kb-cs-assistant/server/src/scripts/import-fastgpt-qa-batch.js)
+- 验证脚本：
+  - [verify-fastgpt-qa-imports.js](/Users/tony/Documents/GitHub/kb-cs-assistant/server/src/scripts/verify-fastgpt-qa-imports.js)
+- 拆分汇总：
+  - [split-summary.json](/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/qa-split-20260313/split-summary.json)
+- 验证报告：
+  - [qa-verify-2026-03-13T12-44-29-560Z.json](/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/qa-verify-20260313/qa-verify-2026-03-13T12-44-29-560Z.json)
+- 专项报告：
+  - [QA-IMPORT-REPORT-2026-03-13.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/QA-IMPORT-REPORT-2026-03-13.md)
+
+### 拆分结果
+- 共导入 `216` 对 Q&A
+- `FASTGPT_DATASET_BAICHUAN = 53`
+- `FASTGPT_DATASET_EBO = 7`
+- `FASTGPT_DATASET_DEVICE_SHOP = 20`
+- `FASTGPT_DATASET_HOME_AI = 112`
+- `FASTGPT_DATASET_B2B_ICT = 24`
+- `视频AI算法舱` 原始 Q&A `11` 条跳过普通客服库，继续按内部支持脱敏路径处理
+
+### 实际导入 collection
+- `tysl-local-kb-baichuan`
+  - `collectionId = 69b405a408bebeccb30c5a51`
+  - `dataAmount = 53`
+- `tysl-local-kb-ebo`
+  - `collectionId = 69b405a408bebeccb30c5a53`
+  - `dataAmount = 7`
+- `tysl-local-kb-device-shop`
+  - `collectionId = 69b4069a08bebeccb30c60ae`
+  - `dataAmount = 20`
+- `tysl-local-kb-home-ai`
+  - `collectionId = 69b4057008bebeccb30c4c51`
+  - `dataAmount = 112`
+- `tysl-local-kb-b2b-ict`
+  - `collectionId = 69b4057808bebeccb30c54fb`
+  - `dataAmount = 24`
+
+### 验证结论
+- FastGPT 侧验证 `5/5` 通过
+- 用户侧补充验证显示：当前全局 workflow 仍未直接纳入这些产品知识库，所以 `/api/chat` 侧还不会自动吃到这批新 Q&A；这属于 workflow 范围问题，不是导入失败
+
 ## 推荐执行顺序
 1. 先导入 26 份 docx 主文档
 2. 再导入按知识库拆分后的 Excel 派生 markdown
-3. Q&A CSV 暂不直接整包导入到单一库
+3. 再导入按知识库拆分后的 Q&A CSV
 4. `视频AI算法舱` 原始 docx 不进入普通客服库；内部支持场景已改为“脱敏后单独入内部库”
 
 ## 本轮最稳的导入批次
@@ -150,11 +196,9 @@
 ### 本轮故意未导入
 - `视频AI算法舱` 原始 docx
 - `视频AI算法舱` 对应原始派生 markdown
-- 两个 Excel 的 Q&A CSV
 
 原因：
 - 算法舱原始内容包含私网地址和默认账密，已改为脱敏后导入内部支持库。
-- Q&A CSV 仍是混合产物，不能直接整包灌入单一知识库，否则会污染检索。
 
 ## MinerU 图文导入烟雾测试
 
