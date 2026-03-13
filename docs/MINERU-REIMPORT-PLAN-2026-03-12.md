@@ -66,6 +66,42 @@
 - [天翼视联（原数字生活）-天翼看家-陌生人识别产品客服文档-全国-20250427V7.0.docx](/Users/tony/Downloads/天翼视联知识库-AI产品/天翼视联（原数字生活）-天翼看家-陌生人识别产品客服文档-全国-20250427V7.0.docx)
   - `10` 张图
 
+### 第二批实际结果
+- 执行时间：
+  - `2026-03-13 15:13` 到 `2026-03-13 15:17`（Asia/Shanghai）
+- 结果目录：
+  - [/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/mineru-reimport-home-ai-batch2](/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/mineru-reimport-home-ai-batch2)
+- 汇总：
+  - `reimported = 6`
+  - `failed = 0`
+- 实际替换：
+  - `AI智能巡检`
+    - 旧 collection: `69b289f308bebeccb30ba81b`
+    - 新 collection: `69b3b95508bebeccb30c1fb0`
+  - `电动车识别`
+    - 旧 collection: `69b289f408bebeccb30ba9e7`
+    - 新 collection: `69b3b97208bebeccb30c20dc`
+  - `智能搜索`
+    - 旧 collection: `69b289f308bebeccb30ba8bb`
+    - 新 collection: `69b3b98f08bebeccb30c222a`
+  - `玩手机识别`
+    - 旧 collection: `69b289f408bebeccb30ba99f`
+    - 新 collection: `69b3b9b108bebeccb30c2363`
+  - `智能筛选`
+    - 旧 collection: `69b289f308bebeccb30ba8f4`
+    - 新 collection: `69b3b9ce08bebeccb30c247b`
+  - `陌生人识别`
+    - 旧 collection: `69b289f608bebeccb30bacbc`
+    - 新 collection: `69b3b9e708bebeccb30c2593`
+
+### 第二批验证
+- 已纳入全量验证脚本结果：
+  - [/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/mineru-verify-20260313-batch2/mineru-reimport-verify-2026-03-13T07-17-52-035Z.json](/Users/tony/Documents/GitHub/kb-cs-assistant/tmp/mineru-verify-20260313-batch2/mineru-reimport-verify-2026-03-13T07-17-52-035Z.json)
+- 结果：
+  - `21/21` 文档通过验证
+  - `21/21` 文档包含图片 URL
+  - 有旧 collection 的 `18` 份文档删除验证通过
+
 ## 第三批：可选补传
 
 ### `tysl-local-kb-device-shop`
