@@ -53,9 +53,12 @@
 - [天翼视联-中国电信行业版AI产品政企版客服文档-全国-20250427V3.0.docx](/Users/tony/Downloads/天翼视联知识库-AI产品/天翼视联-中国电信行业版AI产品政企版客服文档-全国-20250427V3.0.docx)
 
 ### `internal-support`
-- 暂不导入普通客服知识库
-- 待拆分/脱敏后再处理：
-  - [天翼视联-翼智企标准 ICT 业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx](/Users/tony/Downloads/天翼视联知识库%20祁慧靓/天翼视联-翼智企标准%20ICT%20业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx)
+- 不进入普通客服知识库
+- 已完成内部支持脱敏导入：
+  - 来源文档：[天翼视联-翼智企标准 ICT 业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx](/Users/tony/Downloads/天翼视联知识库%20祁慧靓/天翼视联-翼智企标准%20ICT%20业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx)
+  - 内部知识库：`tysl-local-kb-internal-support`
+  - 脱敏稿：[tysl-internal-video-ai-algocabin-support-v1.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/knowledge-drafts/tysl-internal-video-ai-algocabin-support-v1.md)
+  - 专项记录：[INTERNAL-SUPPORT-ENABLEMENT-2026-03-13.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/INTERNAL-SUPPORT-ENABLEMENT-2026-03-13.md)
 
 ## Excel 派生文档分发
 
@@ -68,7 +71,7 @@
   - `tysl-local-kb-baichuan`: 6 份派生 markdown
   - `tysl-local-kb-ebo`: 1 份派生 markdown
   - `tysl-local-kb-device-shop`: 4 份派生 markdown
-  - `internal-support`: 1 份 ICT/算法舱派生 markdown，暂缓
+  - `internal-support`: 1 份 ICT/算法舱派生 markdown，后续若导入需继续脱敏
 
 ### AI 产品 Excel
 - 源文件：
@@ -89,7 +92,7 @@
 1. 先导入 26 份 docx 主文档
 2. 再导入按知识库拆分后的 Excel 派生 markdown
 3. Q&A CSV 暂不直接整包导入到单一库
-4. `视频AI算法舱` 相关 docx 和 Excel 派生内容先暂停，等内部支持库可用后再处理
+4. `视频AI算法舱` 原始 docx 不进入普通客服库；内部支持场景已改为“脱敏后单独入内部库”
 
 ## 本轮最稳的导入批次
 1. `tysl-local-kb-baichuan`
@@ -144,12 +147,12 @@
   - `indexAmount=2`
 
 ### 本轮故意未导入
-- `视频AI算法舱` docx
-- `视频AI算法舱` 对应派生 markdown
+- `视频AI算法舱` 原始 docx
+- `视频AI算法舱` 对应原始派生 markdown
 - 两个 Excel 的 Q&A CSV
 
 原因：
-- 算法舱内容仍应等待内部支持库。
+- 算法舱原始内容包含私网地址和默认账密，已改为脱敏后导入内部支持库。
 - Q&A CSV 仍是混合产物，不能直接整包灌入单一知识库，否则会污染检索。
 
 ## MinerU 图文导入烟雾测试
