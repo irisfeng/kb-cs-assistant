@@ -57,7 +57,8 @@
 - 已完成内部支持脱敏导入：
   - 来源文档：[天翼视联-翼智企标准 ICT 业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx](/Users/tony/Downloads/天翼视联知识库%20祁慧靓/天翼视联-翼智企标准%20ICT%20业务容器类增值应用-视频AI算法舱客服文档-全国-20250813V1.0.docx)
   - 内部知识库：`tysl-local-kb-internal-support`
-  - 脱敏稿：[tysl-internal-video-ai-algocabin-support-v1.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/knowledge-drafts/tysl-internal-video-ai-algocabin-support-v1.md)
+  - 脱敏支持稿：[tysl-internal-video-ai-algocabin-support-v1.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/knowledge-drafts/tysl-internal-video-ai-algocabin-support-v1.md)
+  - 脱敏问答稿：[tysl-internal-video-ai-algocabin-faq-v1.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/knowledge-drafts/tysl-internal-video-ai-algocabin-faq-v1.md)
   - 专项记录：[INTERNAL-SUPPORT-ENABLEMENT-2026-03-13.md](/Users/tony/Documents/GitHub/kb-cs-assistant/docs/INTERNAL-SUPPORT-ENABLEMENT-2026-03-13.md)
 
 ## Excel 派生文档分发
@@ -71,7 +72,7 @@
   - `tysl-local-kb-baichuan`: 6 份派生 markdown
   - `tysl-local-kb-ebo`: 1 份派生 markdown
   - `tysl-local-kb-device-shop`: 4 份派生 markdown
-  - `internal-support`: 1 份 ICT/算法舱派生 markdown，后续若导入需继续脱敏
+  - `internal-support`: 1 份 ICT/算法舱派生 markdown，已脱敏后导入
 
 ### AI 产品 Excel
 - 源文件：

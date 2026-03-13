@@ -28,8 +28,12 @@
 
 ### 4. 导入内部支持知识库
 
-- collection 名称：`翼智企标准 ICT 视频AI算法舱内部支持口径（脱敏版）`
-- collectionId：`69b3fdd508bebeccb30c2f96`
+- collection 1：
+  - 名称：`翼智企标准 ICT 视频AI算法舱内部支持口径（脱敏版）`
+  - collectionId：`69b3fdd508bebeccb30c2f96`
+- collection 2：
+  - 名称：`翼智企标准 ICT 视频AI算法舱内部问答口径（脱敏版）`
+  - collectionId：`69b4012808bebeccb30c31c9`
 
 ## 脱敏原则
 
@@ -54,13 +58,18 @@
 
 ### 训练状态
 
-- `rawTextLength = 1830`
-- `indexAmount = 14`
-- `trainingType = chunk`
+- 内部支持口径：
+  - `rawTextLength = 1830`
+  - `indexAmount = 14`
+  - `trainingType = chunk`
+- 内部问答口径：
+  - `rawTextLength = 1794`
+  - `indexAmount = 12`
+  - `trainingType = chunk`
 
 ### 安全检查
 
-对 collection chunk 做了关键字检查：
+对两条 collection 的 chunk 都做了关键字检查：
 
 - `192.168.`：未命中
 - `task_test`：未命中
@@ -85,5 +94,5 @@
 
 ## 剩余事项
 
-1. 若后续需要处理 `视频AI算法舱` 对应的 Excel 派生 markdown，应继续沿用“脱敏后再入库”的方式
-2. 当前内部支持库只导入了 `docx` 提炼出的脱敏支持稿，还没有导入任何原始私网登录细节
+1. 若后续继续处理同主题的新资料，应继续沿用“先脱敏再入内部库”的方式
+2. 当前内部支持库只保留了脱敏后的支持口径与 FAQ 口径，没有导入任何原始私网登录细节
