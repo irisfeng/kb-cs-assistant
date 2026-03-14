@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, FileText, Trash2 } from 'lucide-react';
+import { getSolutionProductDisplayName } from '../utils/productLabels';
 
 interface Solution {
   id: string;
@@ -60,9 +61,10 @@ const getSummary = (solution: Solution) => {
 
 const getCompactTags = (solution: Solution) => {
   const tags: string[] = [];
+  const productLabel = getSolutionProductDisplayName(solution);
 
-  if (solution.productLine && solution.productLine !== 'GENERAL') {
-    tags.push(solution.productLine);
+  if (productLabel) {
+    tags.push(productLabel);
   }
   if (solution.version) {
     tags.push(solution.version);

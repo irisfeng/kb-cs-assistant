@@ -6,6 +6,7 @@ import { DocumentPreview } from './DocumentPreview';
 import { SolutionChat } from './SolutionChat';
 import { useToast } from '../contexts/ToastContext';
 import type { SolutionDetail as SolutionDetailType, PreviewData } from '../types/solution';
+import { getSolutionProductDisplayName } from '../utils/productLabels';
 
 interface SolutionDetailProps {
   solutionId: string;
@@ -93,6 +94,7 @@ export const SolutionDetail: React.FC<SolutionDetailProps> = ({
   }
 
   const chunkCount = previewData?.chunkCount || 0;
+  const productLabel = getSolutionProductDisplayName(solution);
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
@@ -120,6 +122,11 @@ export const SolutionDetail: React.FC<SolutionDetailProps> = ({
             </p>
 
             <div className="flex flex-wrap items-center gap-3 sm:gap-4 lg:gap-6 text-xs sm:text-sm text-neutral-500 dark:text-neutral-500">
+              {productLabel && (
+                <div className="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 px-3 py-1 rounded-full">
+                  {productLabel}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <FileText size={14} />
                 <span>{solution.fileName}</span>

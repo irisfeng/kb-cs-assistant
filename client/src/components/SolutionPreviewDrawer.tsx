@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, FileText, X } from 'lucide-react';
 import type { Solution } from '../types/solution';
+import { getSolutionProductDisplayName } from '../utils/productLabels';
 
 interface SolutionPreviewDrawerProps {
   solution: Solution | null;
@@ -64,6 +65,7 @@ export const SolutionPreviewDrawer: React.FC<SolutionPreviewDrawerProps> = ({
 
   const summary = solution.description?.trim() || solution.fileName;
   const extension = getFileExtension(solution.fileName);
+  const productLabel = getSolutionProductDisplayName(solution);
 
   return (
     <div className="fixed inset-0 z-40">
@@ -112,9 +114,7 @@ export const SolutionPreviewDrawer: React.FC<SolutionPreviewDrawerProps> = ({
               {isChinese ? '产品线' : 'Product line'}
             </p>
             <p className="mt-1 text-sm font-medium">
-              {solution.productLine && solution.productLine !== 'GENERAL'
-                ? solution.productLine
-                : '--'}
+              {productLabel || '--'}
             </p>
           </div>
           <div className="rounded-2xl border border-stone-200/80 bg-[#faf7f2] px-3 py-3 dark:border-[#3a342e] dark:bg-[#2a2521]">
