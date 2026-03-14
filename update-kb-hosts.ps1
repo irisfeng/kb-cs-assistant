@@ -1,121 +1,203 @@
 #Requires -RunAsAdministrator
-# 自动更新 kb-server.local 的 IP 映射（只修改 kb-server.local，保留其他所有内容）
+
+param(
+  [Parameter(Mandatory = $false)]
+  [string]$IP,
+
+  [Parameter(Mandatory = $false)]
+  [string]$InterfaceAlias
+)
+
+$ErrorActionPreference = "Stop"
+$hostName = "kb-server.local"
+$hostsPath = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
+$backupPath = "$hostsPath.backup.$(Get-Date -Format 'yyyyMMddHHmmss')"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  更新 kb-server.local IP 映射" -ForegroundColor Cyan
+Write-Host "  Update kb-server.local in hosts file" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 获取当前 IP
-$ipconfigOutput = ipconfig | findstr "IPv4"
-if (-not $ipconfigOutput) {
-    Write-Host "错误：无法获取 IP 地址" -ForegroundColor Red
-    Read-Host "按 Enter 退出"
-    exit 1
+function Test-ValidIPv4 {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Address
+  )
+
+  $parsed = $null
+  if (-not [System.Net.IPAddress]::TryParse($Address, [ref]$parsed)) {
+    return $false
+  }
+
+  return $parsed.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork
 }
-$currentIP = ($ipconfigOutput -split ":")[1].Trim()
-Write-Host "当前内网 IP: $currentIP" -ForegroundColor Yellow
+
+function Test-UsableIPv4 {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Address
+  )
+
+  if ($Address -like "127.*") { return $false }
+  if ($Address -like "169.254.*") { return $false }
+  if ($Address -like "0.*") { return $false }
+  if ($Address -like "198.18.*" -or $Address -like "198.19.*") { return $false }
+  return $true
+}
+
+function Test-VirtualInterfaceAlias {
+  param(
+    [Parameter(Mandatory = $false)]
+    [string]$AliasName
+  )
+
+  if (-not $AliasName) {
+    return $false
+  }
+
+  $lower = $AliasName.ToLowerInvariant()
+  return $lower -match "meta|loopback|vethernet|virtual|vmware|hyper-v|npcap|wintun|zerotier|tailscale|isatap|teredo|6to4"
+}
+
+function Get-UsableIPv4FromCandidates {
+  param(
+    [Parameter(Mandatory = $true)]
+    [Object[]]$Candidates
+  )
+
+  $usable = $Candidates |
+    Where-Object {
+      (Test-ValidIPv4 $_.IPAddress) -and
+      (Test-UsableIPv4 $_.IPAddress) -and
+      $_.PrefixOrigin -ne "WellKnown"
+    } |
+    Sort-Object -Property @{ Expression = "SkipAsSource"; Descending = $false }, @{ Expression = "InterfaceMetric"; Descending = $false }
+
+  if ($usable -and $usable.Count -gt 0) {
+    return $usable[0].IPAddress
+  }
+
+  return ""
+}
+
+function Get-BestLocalIPv4 {
+  if ($InterfaceAlias) {
+    $interfaceCandidates = @(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $InterfaceAlias -ErrorAction SilentlyContinue)
+    $interfaceIP = Get-UsableIPv4FromCandidates -Candidates $interfaceCandidates
+    if ($interfaceIP) {
+      return $interfaceIP
+    }
+    throw "No usable IPv4 found on interface '$InterfaceAlias'."
+  }
+
+  $routes = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.State -eq "Alive" } |
+    Sort-Object -Property RouteMetric, InterfaceMetric
+
+  foreach ($route in $routes) {
+    if (Test-VirtualInterfaceAlias $route.InterfaceAlias) {
+      continue
+    }
+
+    $routeCandidates = @(Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.ifIndex -ErrorAction SilentlyContinue)
+    $routeIP = Get-UsableIPv4FromCandidates -Candidates $routeCandidates
+    if ($routeIP) {
+      return $routeIP
+    }
+  }
+
+  $allCandidates = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { -not (Test-VirtualInterfaceAlias $_.InterfaceAlias) }
+  )
+  $allIP = Get-UsableIPv4FromCandidates -Candidates $allCandidates
+
+  if ($allIP) {
+    return $allIP
+  }
+
+  throw "No usable IPv4 address was found. Use -IP to specify one manually."
+}
+
+$currentIP = ""
+if ($IP) {
+  if (-not (Test-ValidIPv4 $IP)) {
+    throw "Invalid IPv4 address: $IP"
+  }
+  if (-not (Test-UsableIPv4 $IP)) {
+    throw "IPv4 address is not usable for hosts mapping: $IP"
+  }
+  $currentIP = $IP
+  Write-Host "Using manual IPv4: $currentIP" -ForegroundColor Yellow
+} else {
+  $currentIP = Get-BestLocalIPv4
+  Write-Host "Detected local IPv4: $currentIP" -ForegroundColor Yellow
+}
 Write-Host ""
 
-# hosts 文件路径
-$hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
-$backupPath = "$env:SystemRoot\System32\drivers\etc\hosts.backup.$(Get-Date -Format 'yyyyMMddHHmmss')"
-
-# 备份
-Copy-Item $hostsPath $backupPath -Force -ErrorAction SilentlyContinue
-Write-Host "已备份 hosts 文件到: $backupPath" -ForegroundColor Gray
+Copy-Item -Path $hostsPath -Destination $backupPath -Force
+Write-Host "Backup created: $backupPath" -ForegroundColor Gray
 Write-Host ""
 
-# 读取 hosts 内容
-$content = Get-Content $hostsPath
-$newContent = @()
-$found = $false
-$action = ""
+$content = Get-Content -Path $hostsPath -ErrorAction Stop
+$newContent = New-Object System.Collections.Generic.List[string]
+$updated = $false
 
 foreach ($line in $content) {
-    # 匹配 kb-server.local 的行（包括注释掉的）
-    if ($line -match "kb-server\.local") {
-        if ($line -match "^\s*#") {
-            # 被注释掉的行：替换为新 IP（取消注释）
-            $oldLine = $line
-            $newContent += "$currentIP  kb-server.local"
-            $found = $true
-            $action = "替换（取消注释）"
-            Write-Host "发现被注释的条目:" -ForegroundColor Yellow
-            Write-Host "  $oldLine" -ForegroundColor Gray
-            Write-Host "  -> $currentIP  kb-server.local" -ForegroundColor Green
-        } elseif ($line -match "^\d+\.\d+\.\d+\.\d+\s+kb-server\.local") {
-            # 已存在的有效条目：更新 IP
-            $oldIP = $line -replace "^(\d+\.\d+\.\d+\.\d+).*", '$1'
-            $newContent += "$currentIP  kb-server.local"
-            $found = $true
-            $action = "更新 IP"
-            if ($oldIP -eq $currentIP) {
-                Write-Host "IP 已是最新: $currentIP" -ForegroundColor Green
-            } else {
-                Write-Host "更新 IP: $oldIP -> $currentIP" -ForegroundColor Green
-            }
-        } else {
-            # 其他包含 kb-server.local 的行，直接保留
-            $newContent += $line
-        }
-    } else {
-        # 其他行（包括 Docker 的）全部保留
-        $newContent += $line
+  if ($line -match "^\s*#") {
+    if ($line -match [regex]::Escape($hostName)) {
+      continue
     }
+    $newContent.Add($line)
+    continue
+  }
+
+  if ($line -match "^\s*\d{1,3}(?:\.\d{1,3}){3}\s+$([regex]::Escape($hostName))(\s|$)") {
+    if (-not $updated) {
+      $newContent.Add("$currentIP`t$hostName")
+      $updated = $true
+    }
+    continue
+  }
+
+  if ($line -match [regex]::Escape($hostName)) {
+    if (-not $updated) {
+      $newContent.Add("$currentIP`t$hostName")
+      $updated = $true
+    }
+    continue
+  }
+
+  $newContent.Add($line)
 }
 
-# 如果没找到 kb-server.local，添加到文件末尾
-if (-not $found) {
-    $newContent += ""
-    $newContent += "# kb-server 项目"
-    $newContent += "$currentIP  kb-server.local"
-    $action = "新增"
-    Write-Host "新增条目: $currentIP  kb-server.local" -ForegroundColor Green
+if (-not $updated) {
+  if ($newContent.Count -gt 0 -and $newContent[$newContent.Count - 1] -ne "") {
+    $newContent.Add("")
+  }
+  $newContent.Add("# kb-server mapping")
+  $newContent.Add("$currentIP`t$hostName")
 }
 
-Write-Host ""
-
-# 写入文件
-$newContent | Set-Content $hostsPath -Force
-
-# 刷新 DNS
+# Use .NET file writer to avoid Set-Content stream issues on some systems.
+$ascii = [System.Text.Encoding]::ASCII
+[System.IO.File]::WriteAllLines($hostsPath, [string[]]$newContent, $ascii)
 ipconfig /flushdns | Out-Null
-Write-Host "DNS 缓存已刷新" -ForegroundColor Green
 
-# 验证
+Write-Host "Hosts updated and DNS cache flushed." -ForegroundColor Green
 Write-Host ""
-Write-Host "验证结果:" -ForegroundColor Cyan
-$verify = Get-Content $hostsPath | findstr "kb-server.local" | findstr /V "^#"
-if ($verify) {
-    Write-Host $verify -ForegroundColor Green
-} else {
-    Write-Host "验证失败！请手动检查 hosts 文件" -ForegroundColor Red
+Write-Host "Current mapping lines:" -ForegroundColor Cyan
+Get-Content -Path $hostsPath | Select-String -Pattern $hostName | ForEach-Object {
+  Write-Host $_.Line
 }
 
-# 测试 ping
 Write-Host ""
-Write-Host "网络测试:" -ForegroundColor Cyan
+Write-Host "Ping test:" -ForegroundColor Cyan
 try {
-    $pingResult = ping -n 1 kb-server.local | findstr "来自"
-    if ($pingResult) {
-        Write-Host $pingResult -ForegroundColor Green
-    } else {
-        Write-Host "Ping 测试失败" -ForegroundColor Yellow
-    }
+  ping -n 1 $hostName
 } catch {
-    Write-Host "Ping 测试出错" -ForegroundColor Yellow
+  Write-Host "Ping failed: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-if ($action) {
-    Write-Host "  完成! ($action)" -ForegroundColor Green
-} else {
-    Write-Host "  完成!" -ForegroundColor Green
-}
-Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-
-Read-Host "按任意键关闭"
+Write-Host "Done." -ForegroundColor Green

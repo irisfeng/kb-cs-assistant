@@ -7,6 +7,53 @@ export interface Solution {
   fileId?: string;
   originalFilePath?: string;
   createdAt?: string;
+  datasetId?: string;
+  knowledgeSubmissionId?: string;
+  securityLevel?: string;
+  audienceScope?: string;
+  importScope?: string;
+  productLine?: string;
+  productName?: string;
+  version?: string;
+}
+
+export type KnowledgeSubmissionStatus =
+  | 'PENDING_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'BLOCKED'
+  | 'PUBLISHED';
+
+export interface KnowledgeSubmission {
+  id: string;
+  title: string;
+  description: string;
+  fileName: string;
+  extension: string;
+  originalFilePath: string;
+  productLine: string;
+  productName: string;
+  documentType: string;
+  effectiveDate: string;
+  version: string;
+  versionRank: number;
+  securityLevel: string;
+  audienceScope: string;
+  importScope: string;
+  recommendedAction: string;
+  sensitiveSignals: string[];
+  extractError: string;
+  preview: string;
+  submittedByRole: string;
+  status: KnowledgeSubmissionStatus;
+  reviewNote: string;
+  submittedAt: string;
+  reviewedAt: string;
+  reviewedBy?: string;
+  publishedAt: string;
+  publishedSolutionId: string;
+  collectionId?: string;
+  datasetId?: string;
 }
 
 export interface SolutionDetail extends Solution {
@@ -62,7 +109,8 @@ export type ViewMode =
   | 'solutions'
   | 'upload'
   | 'solution-detail'
-  | 'capabilities';
+  | 'capabilities'
+  | 'governance';
 
 export interface DraftOutlineSlide {
   number: number;

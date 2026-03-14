@@ -33,12 +33,27 @@ import {
   getIndustryPainPoints,
   getIndustryMetrics,
 } from "./industry-config.js";
+import {
+  createKnowledgeSubmissionRecord,
+  resolveDatasetIdForSubmission,
+  sanitizeKnowledgeSubmission,
+} from "./knowledge-workflow.js";
+import { parseWithMinerU as parseWithMinerUClient } from "./mineru-client.js";
 
 // Note: generatePPTFromImages is not fully implemented, generatePPT is used as fallback
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const upload = multer({ dest: "uploads/" });
 const LEGACY_DRAFTS_ENABLED = process.env.ENABLE_LEGACY_DRAFTS === "true";
+const FASTGPT_GLOBAL_APP_KEY = process.env.FASTGPT_GLOBAL_APP_KEY;
+const FASTGPT_GLOBAL_APP_MODEL =
+  process.env.FASTGPT_GLOBAL_APP_MODEL || "tysl-local-app-global-v2";
+const FASTGPT_SOLUTION_APP_KEY =
+  process.env.FASTGPT_SOLUTION_APP_KEY || process.env.FASTGPT_WORKFLOW_KEY;
+const FASTGPT_SOLUTION_APP_MODEL =
+  process.env.FASTGPT_SOLUTION_APP_MODEL ||
+  process.env.FASTGPT_WORKFLOW_MODEL ||
+  "solution-kb-chat";
 const LEGACY_DRAFTS_DISABLED_RESPONSE = {
   error:
     "Legacy draft and PPT endpoints are disabled in the customer service knowledge system.",
@@ -97,6 +112,26 @@ async function uploadImageToFastGPT(imageBuffer, fileName) {
     }
     return null;
   }
+}
+
+async function deleteFastGptCollections(collectionIds = []) {
+  const ids = [...new Set(collectionIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (ids.length === 0) {
+    return;
+  }
+
+  await axios.post(
+    `${process.env.FASTGPT_BASE_URL}/core/dataset/collection/delete`,
+    {
+      collectionIds: ids,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
 }
 
 /**
@@ -347,6 +382,64 @@ function buildSolutionScopePrompt(solution) {
   ].join("\n\n");
 }
 
+function trimRetrievalContext(value = "", maxLength = 320) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function buildRetrievalAwareMessages(messages = [], { scopeLabel = "", scopeHint = "" } = {}) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+
+  const normalizedMessages = messages
+    .filter(
+      (message) =>
+        message &&
+        typeof message.role === "string" &&
+        typeof message.content === "string" &&
+        message.content.trim(),
+    )
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+
+  const lastUserIndex = normalizedMessages.map((message) => message.role).lastIndexOf("user");
+  if (lastUserIndex === -1) {
+    return normalizedMessages;
+  }
+
+  const recentTurns = normalizedMessages
+    .slice(Math.max(0, lastUserIndex - 4), lastUserIndex)
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => {
+      const prefix = message.role === "assistant" ? "Previous assistant answer" : "Previous user question";
+      const maxLength = message.role === "assistant" ? 220 : 160;
+      return `${prefix}: ${trimRetrievalContext(message.content, maxLength)}`;
+    });
+
+  normalizedMessages[lastUserIndex] = {
+    ...normalizedMessages[lastUserIndex],
+    content: [
+      scopeLabel ? `Conversation scope: ${scopeLabel}` : "",
+      scopeHint ? `Scope hint: ${scopeHint}` : "",
+      recentTurns.length ? `Recent conversation:\n${recentTurns.join("\n")}` : "",
+      `Current user question:\n${normalizedMessages[lastUserIndex].content}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+
+  return normalizedMessages;
+}
+
 function normalizeComparableText(value = "") {
   return String(value)
     .trim()
@@ -499,8 +592,15 @@ app.use("/images", express.static(path.join(__dirname, "../public/images")));
 app.use("/files", express.static(path.join(__dirname, "../public/files")));
 
 // Database setup
-const defaultData = { solutions: [] };
+const defaultData = { solutions: [], knowledgeSubmissions: [] };
 const db = await JSONFilePreset(path.join(__dirname, "db.json"), defaultData);
+if (!Array.isArray(db.data.solutions)) {
+  db.data.solutions = [];
+}
+if (!Array.isArray(db.data.knowledgeSubmissions)) {
+  db.data.knowledgeSubmissions = [];
+}
+await db.write();
 
 // Capabilities database setup
 const defaultCapabilities = { capabilities: [] };
@@ -515,6 +615,15 @@ const draftsDb = LEGACY_DRAFTS_ENABLED
   ? await JSONFilePreset(path.join(__dirname, "../data/drafts.json"), defaultDrafts)
   : null;
 
+function ensureKnowledgeDbShape() {
+  if (!Array.isArray(db.data.solutions)) {
+    db.data.solutions = [];
+  }
+  if (!Array.isArray(db.data.knowledgeSubmissions)) {
+    db.data.knowledgeSubmissions = [];
+  }
+}
+
 function sendLegacyFeatureDisabled(res) {
   return res.status(410).json(LEGACY_DRAFTS_DISABLED_RESPONSE);
 }
@@ -528,6 +637,21 @@ function resolveChatSessionId(sessionId, fallbackScope) {
   }
 
   return `${fallbackScope}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function resolveFastGptChatId(sessionId, fallbackScope, messages) {
+  const hasConversationHistory =
+    Array.isArray(messages) && messages.filter((message) => message?.role !== "system").length > 1;
+
+  // FastGPT workflow sessions currently regress into a generic greeting when an
+  // existing chatId is reused together with a full local message history.
+  // For follow-up turns, rely on the explicit message history from the client
+  // and let FastGPT start a fresh chat context per request.
+  if (hasConversationHistory) {
+    return undefined;
+  }
+
+  return resolveChatSessionId(sessionId, fallbackScope);
 }
 
 function getLegacyPptTemplates() {
@@ -1007,41 +1131,402 @@ async function pollMinerUResult(batchId, maxAttempts = 60, interval = 3000) {
  * 支持: PDF, DOC, DOCX, PPT, PPTX, PNG, JPG, JPEG, HTML
  */
 async function parseWithMinerU(filePath, fileName) {
-  const dataId = `file_${Date.now()}`;
+  return parseWithMinerUClient(filePath, fileName);
+}
 
-  // 1. 申请上传链接
-  console.log("Applying MinerU upload URL...");
-  const { batchId, uploadUrl } = await applyMinerUUploadUrl(fileName, dataId);
+async function importDocumentToKnowledgeBase({
+  sourceFilePath,
+  originalName,
+  title,
+  description = "",
+  datasetId,
+  existingOriginalFilePath = "",
+  cleanupSourceFile = false,
+}) {
+  if (!datasetId) {
+    throw new Error("FASTGPT dataset is not configured for this document");
+  }
 
-  // 2. 上传文件
-  console.log("Uploading file to MinerU...");
-  await uploadFileToMinerU(filePath, uploadUrl);
+  const fileExt = path.extname(originalName).toLowerCase();
+  let originalFilePath = existingOriginalFilePath || "";
+  let copiedOriginalAbsolutePath = "";
+  const fileId = originalFilePath
+    ? path.basename(originalFilePath, path.extname(originalFilePath))
+    : `file_${Date.now()}`;
 
-  // 3. 轮询查询结果
-  console.log("Polling MinerU result...");
-  const result = await pollMinerUResult(batchId);
+  try {
+    if (!originalFilePath) {
+      const filesDir = path.join(__dirname, "../public/files");
+      if (!fs.existsSync(filesDir)) {
+        fs.mkdirSync(filesDir, { recursive: true });
+      }
+      const originalFileName = `${fileId}${fileExt}`;
+      copiedOriginalAbsolutePath = path.join(filesDir, originalFileName);
+      fs.copyFileSync(sourceFilePath, copiedOriginalAbsolutePath);
+      originalFilePath = `/files/${originalFileName}`;
+    }
 
-  // 4. 返回完整结果（使用 HTTP URL 版本，因为 hosts 已修复）
-  console.log("[FastGPT] Using HTTP URL version for FastGPT (hosts fixed)");
+    let textContent = "";
+    let mineruResult = null;
+    const isMinerUEnabled =
+      process.env.MINERU_API_TOKEN &&
+      process.env.MINERU_API_TOKEN !== "your_mineru_token_here";
 
-  // 5. 返回完整结果
-  return {
-    text: result.fastGptMarkdown || result.markdown, // 发送给 FastGPT 的内容（使用 HTTP URL 版本）
-    localMarkdown: result.markdown, // 本地路径版本的 markdown（用于预览）
-    base64Markdown: result.base64Markdown, // base64 版本的 markdown（兼容）
-    fastGPTMarkdown: result.fastGptMarkdown, // FastGPT 专用版本（HTTP URL）
-    batchId: result.batchId,
-    imageCount: result.imageCount,
-    source: "mineru-api",
-  };
+    if (
+      fileExt === ".pdf" ||
+      fileExt === ".doc" ||
+      fileExt === ".docx" ||
+      fileExt === ".ppt" ||
+      fileExt === ".pptx" ||
+      fileExt === ".png" ||
+      fileExt === ".jpg" ||
+      fileExt === ".jpeg"
+    ) {
+      if (!isMinerUEnabled) {
+        throw new Error(
+          "MinerU API Token not configured. Please add MINERU_API_TOKEN to .env file.",
+        );
+      }
+      mineruResult = await parseWithMinerU(sourceFilePath, originalName);
+      textContent =
+        mineruResult?.text ||
+        mineruResult?.base64Markdown ||
+        mineruResult?.markdown ||
+        "";
+    } else if (fileExt === ".xlsx" || fileExt === ".xls") {
+      const workbook = xlsx.readFile(sourceFilePath);
+      const sheetNames = workbook.SheetNames;
+      const sheets = sheetNames.map((name) =>
+        xlsx.utils.sheet_to_csv(workbook.Sheets[name]),
+      );
+      textContent = sheets.join("\n\n--- Sheet Separator ---\n\n");
+    } else if (
+      fileExt === ".txt" ||
+      fileExt === ".md" ||
+      fileExt === ".csv" ||
+      fileExt === ".html"
+    ) {
+      textContent = fs.readFileSync(sourceFilePath, "utf-8");
+    } else {
+      throw new Error(`Unsupported file type: ${fileExt}`);
+    }
+
+    const fastGPTTextContent = mineruResult?.text || textContent;
+    const importRes = await axios.post(
+      `${process.env.FASTGPT_BASE_URL}/core/dataset/collection/create/text`,
+      {
+        datasetId,
+        name: originalName,
+        text: fastGPTTextContent,
+        trainingType: "chunk",
+        chunkSize: 8000,
+        chunkSplitter: "",
+        qaPrompt: "",
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const responseData = importRes.data.data;
+    let collectionId;
+    if (typeof responseData === "string") {
+      collectionId = responseData;
+    } else if (responseData?.collectionId) {
+      collectionId = responseData.collectionId;
+    } else {
+      throw new Error("Invalid FastGPT response: missing collectionId");
+    }
+
+    return {
+      collectionId,
+      solution: {
+        id: Date.now().toString(),
+        title,
+        description,
+        fileName: originalName,
+        fileId,
+        originalFilePath,
+        collectionId,
+        datasetId,
+        localMarkdown: mineruResult?.localMarkdown || "",
+        batchId: mineruResult?.batchId || "",
+        imageCount: mineruResult?.imageCount || 0,
+        uploadStatus: "success",
+        createdAt: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    if (copiedOriginalAbsolutePath && fs.existsSync(copiedOriginalAbsolutePath)) {
+      fs.unlinkSync(copiedOriginalAbsolutePath);
+    }
+    throw error;
+  } finally {
+    if (cleanupSourceFile && sourceFilePath && fs.existsSync(sourceFilePath)) {
+      fs.unlinkSync(sourceFilePath);
+    }
+  }
 }
 
 // ==================== Routes ====================
 
+app.get("/api/knowledge/submissions", async (_req, res) => {
+  await db.read();
+  ensureKnowledgeDbShape();
+
+  const submissions = [...db.data.knowledgeSubmissions]
+    .sort((left, right) => {
+      const leftDate = left.submittedAt || "";
+      const rightDate = right.submittedAt || "";
+      return rightDate.localeCompare(leftDate);
+    })
+    .map((item) => sanitizeKnowledgeSubmission(item));
+
+  res.json(submissions);
+});
+
+app.post("/api/knowledge/submissions", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return sendApiError(res, {
+      status: 400,
+      code: "KNOWLEDGE_FILE_REQUIRED",
+      message: "No file uploaded",
+      requestId: req.requestId,
+    });
+  }
+
+  const originalName = fixFileNameEncoding(req.file.originalname);
+  const title = typeof req.body.title === "string" && req.body.title.trim()
+    ? req.body.title.trim()
+    : originalName;
+  const description =
+    typeof req.body.description === "string" ? req.body.description.trim() : "";
+  const submittedByRole =
+    typeof req.body.submittedByRole === "string" && req.body.submittedByRole.trim()
+      ? req.body.submittedByRole.trim()
+      : "agent";
+  const tempFilePath = req.file.path;
+  const fileExt = path.extname(originalName).toLowerCase();
+  let storedFileAbsolutePath = "";
+
+  try {
+    const filesDir = path.join(__dirname, "../public/files");
+    if (!fs.existsSync(filesDir)) {
+      fs.mkdirSync(filesDir, { recursive: true });
+    }
+
+    const storageKey = `submission_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const storedFileName = `${storageKey}${fileExt}`;
+    storedFileAbsolutePath = path.join(filesDir, storedFileName);
+    fs.copyFileSync(tempFilePath, storedFileAbsolutePath);
+
+    const submission = await createKnowledgeSubmissionRecord({
+      title,
+      description,
+      originalName,
+      storedFilePath: storedFileAbsolutePath,
+      originalFilePath: `/files/${storedFileName}`,
+      submittedByRole,
+    });
+
+    await db.read();
+    ensureKnowledgeDbShape();
+    db.data.knowledgeSubmissions.unshift(submission);
+    await db.write();
+
+    res.status(201).json({
+      message: "Knowledge submission created",
+      submission: sanitizeKnowledgeSubmission(submission),
+    });
+  } catch (error) {
+    if (storedFileAbsolutePath && fs.existsSync(storedFileAbsolutePath)) {
+      fs.unlinkSync(storedFileAbsolutePath);
+    }
+
+    console.error("Knowledge submission failed:", error.message);
+    return sendApiError(res, {
+      status: 500,
+      code: "KNOWLEDGE_SUBMISSION_FAILED",
+      message: "Failed to create knowledge submission",
+      requestId: req.requestId,
+      details: {
+        fileName: originalName,
+      },
+    });
+  } finally {
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
+});
+
+app.patch("/api/knowledge/submissions/:id/review", async (req, res) => {
+  const { id } = req.params;
+  const decision = typeof req.body.decision === "string" ? req.body.decision : "";
+  const reviewNote =
+    typeof req.body.reviewNote === "string" ? req.body.reviewNote.trim() : "";
+  const reviewedBy =
+    typeof req.body.reviewedBy === "string" && req.body.reviewedBy.trim()
+      ? req.body.reviewedBy.trim()
+      : "team_lead";
+
+  if (!["approve", "reject"].includes(decision)) {
+    return sendApiError(res, {
+      status: 400,
+      code: "INVALID_REVIEW_DECISION",
+      message: "decision must be approve or reject",
+      requestId: req.requestId,
+    });
+  }
+
+  await db.read();
+  ensureKnowledgeDbShape();
+  const submission = db.data.knowledgeSubmissions.find((item) => item.id === id);
+
+  if (!submission) {
+    return sendApiError(res, {
+      status: 404,
+      code: "KNOWLEDGE_SUBMISSION_NOT_FOUND",
+      message: "Knowledge submission not found",
+      requestId: req.requestId,
+    });
+  }
+
+  if (submission.status === "PUBLISHED") {
+    return sendApiError(res, {
+      status: 409,
+      code: "KNOWLEDGE_SUBMISSION_ALREADY_PUBLISHED",
+      message: "Published submission cannot be reviewed again",
+      requestId: req.requestId,
+    });
+  }
+
+  const isBlockedAction = [
+    "SPLIT_OR_REDACT",
+    "EXTRACT_THEN_IMPORT",
+    "REVIEW_SOURCE_FILE",
+  ].includes(submission.recommendedAction);
+
+  if (decision === "reject") {
+    submission.status = "REJECTED";
+    submission.reviewNote = reviewNote || "驳回该知识提报，请补充说明后重新提交。";
+  } else if (isBlockedAction) {
+    submission.status = "BLOCKED";
+    submission.reviewNote =
+      reviewNote || "当前文件不能直接发布，请先完成脱敏、抽取或源文件修复。";
+  } else {
+    submission.status = "APPROVED";
+    submission.reviewNote = reviewNote || "审核通过，可发布到知识库。";
+  }
+
+  submission.reviewedBy = reviewedBy;
+  submission.reviewedAt = new Date().toISOString();
+  await db.write();
+
+  res.json({
+    message: "Knowledge submission reviewed",
+    submission: sanitizeKnowledgeSubmission(submission),
+  });
+});
+
+app.post("/api/knowledge/submissions/:id/publish", async (req, res) => {
+  const { id } = req.params;
+
+  await db.read();
+  ensureKnowledgeDbShape();
+  const submission = db.data.knowledgeSubmissions.find((item) => item.id === id);
+
+  if (!submission) {
+    return sendApiError(res, {
+      status: 404,
+      code: "KNOWLEDGE_SUBMISSION_NOT_FOUND",
+      message: "Knowledge submission not found",
+      requestId: req.requestId,
+    });
+  }
+
+  if (submission.status !== "APPROVED") {
+    return sendApiError(res, {
+      status: 409,
+      code: "KNOWLEDGE_SUBMISSION_NOT_APPROVED",
+      message: "Only approved submissions can be published",
+      requestId: req.requestId,
+      details: { status: submission.status },
+    });
+  }
+
+  const datasetId = resolveDatasetIdForSubmission(submission);
+  if (!datasetId) {
+    return sendApiError(res, {
+      status: 400,
+      code: "FASTGPT_DATASET_NOT_CONFIGURED",
+      message: "No FastGPT dataset configured for this submission",
+      requestId: req.requestId,
+    });
+  }
+
+  try {
+    const { solution, collectionId } = await importDocumentToKnowledgeBase({
+      sourceFilePath: submission.storedFilePath,
+      originalName: submission.fileName,
+      title: submission.title,
+      description: submission.description,
+      datasetId,
+      existingOriginalFilePath: submission.originalFilePath,
+    });
+
+    solution.knowledgeSubmissionId = submission.id;
+    solution.securityLevel = submission.securityLevel;
+    solution.audienceScope = submission.audienceScope;
+    solution.importScope = submission.importScope;
+    solution.productLine = submission.productLine;
+    solution.productName = submission.productName;
+    solution.version = submission.version;
+
+    db.data.solutions.unshift(solution);
+    submission.status = "PUBLISHED";
+    submission.publishedAt = new Date().toISOString();
+    submission.publishedSolutionId = solution.id;
+    submission.collectionId = collectionId;
+    submission.datasetId = datasetId;
+    await db.write();
+
+    res.json({
+      message: "Knowledge submission published",
+      solution,
+      submission: sanitizeKnowledgeSubmission(submission),
+    });
+  } catch (error) {
+    console.error("Knowledge submission publish failed:", error.message);
+    return sendApiError(res, {
+      status: 500,
+      code: "KNOWLEDGE_PUBLISH_FAILED",
+      message: "Failed to publish knowledge submission",
+      requestId: req.requestId,
+      details: {
+        fileName: submission.fileName,
+        datasetId,
+      },
+    });
+  }
+});
+
 // Get all solutions
 app.get("/api/solutions", async (req, res) => {
   await db.read();
-  res.json(db.data.solutions);
+  ensureKnowledgeDbShape();
+  res.json(
+    [...db.data.solutions].sort((left, right) => {
+      const leftDate = left.createdAt || "";
+      const rightDate = right.createdAt || "";
+      return rightDate.localeCompare(leftDate);
+    }),
+  );
 });
 
 // Get solution detail with FastGPT data
@@ -1179,6 +1664,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
   const { id } = req.params;
   const { messages = [], sessionId } = req.body;
   const resolvedSessionId = resolveChatSessionId(sessionId, `solution-${id}`);
+  const fastGptChatId = resolveFastGptChatId(sessionId, `solution-${id}`, messages);
   logEvent(
     "info",
     "solution_chat.started",
@@ -1251,13 +1737,24 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
       JSON.stringify({ collectionId: solution.collectionId }),
     );
     console.log("[SolutionChat] Session ID:", resolvedSessionId);
+    console.log("[SolutionChat] FastGPT Chat ID:", fastGptChatId || "(fresh per request)");
+    console.log("[SolutionChat] FastGPT app channel:", FASTGPT_SOLUTION_APP_MODEL);
+
+    if (!FASTGPT_SOLUTION_APP_KEY) {
+      throw new Error("FASTGPT_SOLUTION_APP_KEY or FASTGPT_WORKFLOW_KEY is not configured");
+    }
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
 
+    const retrievalAwareMessages = buildRetrievalAwareMessages(messages, {
+      scopeLabel: `document "${solution.title}"`,
+      scopeHint: `Only retrieve evidence from "${solution.fileName}" (collection ${solution.collectionId}).`,
+    });
+
     const requestBody = {
-      model: "solution-kb-chat",
-      chatId: resolvedSessionId,
+      model: FASTGPT_SOLUTION_APP_MODEL,
+      chatId: fastGptChatId,
       stream: true,
       detail: true,
       // Pass collectionId as variable to workflow (if configured)
@@ -1265,7 +1762,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
         collectionId: solution.collectionId,
         sourceName: solution.fileName,
       },
-      messages: [{ role: "system", content: scopedPrompt }, ...messages],
+      messages: [{ role: "system", content: scopedPrompt }, ...retrievalAwareMessages],
     };
     console.log(
       "[SolutionChat] Request body keys:",
@@ -1281,7 +1778,7 @@ app.post("/api/solutions/:id/chat", async (req, res) => {
       requestBody,
       {
         headers: {
-          Authorization: `Bearer ${process.env.FASTGPT_WORKFLOW_KEY}`,
+          Authorization: `Bearer ${FASTGPT_SOLUTION_APP_KEY}`,
           "Content-Type": "application/json",
         },
         responseType: "stream",
@@ -1533,128 +2030,23 @@ app.delete("/api/solutions/:id", async (req, res) => {
 
     // Delete from FastGPT if collectionId exists
     if (solution.collectionId && solution.collectionId !== "local-parsed") {
-      let deleted = false;
-      const errors = [];
-
-      // Try Method 1: /api/core/dataset/collection/deleteById
       try {
-        console.log(
-          `[Delete] Method 1: POST /api/core/dataset/collection/deleteById`,
-        );
-        const res1 = await axios.post(
-          `${process.env.FASTGPT_BASE_URL}/api/core/dataset/collection/deleteById`,
-          {
-            collectionId: solution.collectionId,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-        console.log(`[Delete] Method 1 succeeded:`, res1.status);
-        deleted = true;
-      } catch (err) {
-        errors.push(`Method 1 (/api/...): ${err.message}`);
-        if (err.response) {
-          errors.push(`  Status: ${err.response.status}`);
-          if (err.response.data) {
-            errors.push(
-              `  Data: ${JSON.stringify(err.response.data).substring(0, 300)}`,
-            );
-          }
-        }
-      }
-
-      // Try Method 2: /v1/dataset/collection/delete
-      if (!deleted) {
-        try {
-          console.log(`[Delete] Method 2: POST /v1/dataset/collection/delete`);
-          const res2 = await axios.post(
-            `${process.env.FASTGPT_BASE_URL}/v1/dataset/collection/delete`,
-            {
-              collectionId: solution.collectionId,
-              datasetId: process.env.FASTGPT_DATASET_ID,
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            },
-          );
-          console.log(`[Delete] Method 2 succeeded:`, res2.status);
-          deleted = true;
-        } catch (err) {
-          errors.push(`Method 2 (/v1/dataset/...): ${err.message}`);
-          if (err.response) {
-            errors.push(`  Status: ${err.response.status}`);
-            if (err.response.data) {
-              errors.push(
-                `  Data: ${JSON.stringify(err.response.data).substring(0, 300)}`,
-              );
-            }
-          }
-        }
-      }
-
-      // Try Method 3: Get collection detail first, then delete
-      if (!deleted) {
-        try {
-          console.log(
-            `[Delete] Method 3: GET /api/core/dataset/collection/detail`,
-          );
-          const detailRes = await axios.get(
-            `${process.env.FASTGPT_BASE_URL}/api/core/dataset/collection/detail`,
-            {
-              params: {
-                collectionId: solution.collectionId,
-                datasetId: process.env.FASTGPT_DATASET_ID,
-              },
-              headers: {
-                Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-              },
-            },
-          );
-
-          console.log(
-            `[Delete] Got collection detail:`,
-            detailRes.data?.data?.name,
-          );
-
-          // Now try to delete it using same API
-          const deleteRes = await axios.post(
-            `${process.env.FASTGPT_BASE_URL}/api/core/dataset/collection/deleteById`,
-            {
-              collectionId: solution.collectionId,
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            },
-          );
-          console.log(`[Delete] Method 3 succeeded:`, deleteRes.status);
-          deleted = true;
-        } catch (err) {
-          errors.push(`Method 3 (detail then delete): ${err.message}`);
-          if (err.response) {
-            errors.push(`  Status: ${err.response.status}`);
-          }
-        }
-      }
-
-      if (deleted) {
+        await deleteFastGptCollections([solution.collectionId]);
         console.log(
           `[Delete] Successfully deleted collection ${solution.collectionId} from FastGPT`,
         );
-      } else {
+      } catch (fastgptError) {
         console.warn(
-          `[Delete] All methods failed for collection ${solution.collectionId}:`,
+          "[Delete] Failed to delete collection from FastGPT:",
+          fastgptError.message,
         );
-        errors.forEach((e) => console.warn(`  - ${e}`));
+        if (fastgptError.response) {
+          console.warn("[Delete] FastGPT status:", fastgptError.response.status);
+          console.warn(
+            "[Delete] FastGPT response:",
+            JSON.stringify(fastgptError.response.data).substring(0, 500),
+          );
+        }
       }
     }
 
@@ -1968,6 +2360,7 @@ async function findSolutionByCollectionId(collectionId) {
 app.post("/api/chat", async (req, res) => {
   const { messages = [], sessionId } = req.body;
   const resolvedSessionId = resolveChatSessionId(sessionId, "global");
+  const fastGptChatId = resolveFastGptChatId(sessionId, "global", messages);
   logEvent(
     "info",
     "global_chat.started",
@@ -1983,11 +2376,13 @@ app.post("/api/chat", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    console.log(
-      "[Debug GlobalChat] Using FASTGPT_WORKFLOW_KEY:",
-      process.env.FASTGPT_WORKFLOW_KEY?.substring(0, 20) + "...",
-    );
+    if (!FASTGPT_GLOBAL_APP_KEY) {
+      throw new Error("FASTGPT_GLOBAL_APP_KEY is not configured");
+    }
+
+    console.log("[Debug GlobalChat] Using FastGPT app channel:", FASTGPT_GLOBAL_APP_MODEL);
     console.log("[Debug GlobalChat] Session ID:", resolvedSessionId);
+    console.log("[Debug GlobalChat] FastGPT Chat ID:", fastGptChatId || "(fresh per request)");
 
     // Track the last sent textOutput to avoid sending partial/incomplete content
     let lastSentTextOutputLength = 0;
@@ -2001,18 +2396,25 @@ app.post("/api/chat", async (req, res) => {
       }
     }
 
+    const retrievalAwareMessages = buildRetrievalAwareMessages(messages, {
+      scopeLabel: "global customer-service knowledge base",
+      scopeHint:
+        "Prefer grounded SOP and policy evidence. If evidence is missing, answer conservatively and require manual review.",
+    });
+
     const response = await axios.post(
       `${process.env.FASTGPT_BASE_URL}/v1/chat/completions`,
       {
-        model: "solution-kb-chat",
-        chatId: resolvedSessionId,
+        model: FASTGPT_GLOBAL_APP_MODEL,
+        chatId: fastGptChatId,
         stream: true, // Enable streaming
         detail: true,
-        messages: [{ role: "system", content: GLOBAL_CUSTOMER_SERVICE_PROMPT }, ...messages],
+        // Let the published FastGPT app own the knowledge scope and answer policy.
+        messages: retrievalAwareMessages,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.FASTGPT_WORKFLOW_KEY}`,
+          Authorization: `Bearer ${FASTGPT_GLOBAL_APP_KEY}`,
           "Content-Type": "application/json",
         },
         responseType: "stream",
@@ -2421,19 +2823,7 @@ app.delete("/api/capabilities/:id", async (req, res) => {
     // Delete from FastGPT if collectionId exists
     if (capability.collectionId) {
       try {
-        await axios.post(
-          `${process.env.FASTGPT_BASE_URL}/core/dataset/collection/delete`,
-          {
-            datasetId: process.env.FASTGPT_DATASET_ID,
-            collectionId: capability.collectionId,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.FASTGPT_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
+        await deleteFastGptCollections([capability.collectionId]);
         console.log(`[Capability] Deleted from FastGPT: ${capability.name}`);
       } catch (fastgptError) {
         console.warn(

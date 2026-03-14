@@ -37,9 +37,20 @@ Recommended values:
 
 - `FASTGPT_BASE_URL=http://localhost:3000`
 - `FASTGPT_DATASET_ID=...`
+- `FASTGPT_DATASET_HOME_AI=...` for `HOME_AI` product-line submissions
+- `FASTGPT_DATASET_BAICHUAN=...` for `CLIENT`/视联百川 submissions
+- `FASTGPT_DATASET_B2B_ICT=...` for `GENERAL`/`ICT` product-line submissions
+- `FASTGPT_DATASET_DEVICE_SHOP=...` for marketplace device submissions
+- `FASTGPT_DATASET_EBO=...` for EBO-specific marketplace submissions
+- `FASTGPT_PUBLIC_DATASET_ID=...` for normal customer-service assets
+- `FASTGPT_INTERNAL_DATASET_ID=...` for internal-support-only assets
 - `FASTGPT_API_KEY=...`
 - `FASTGPT_APP_KEY=...`
 - `FASTGPT_WORKFLOW_KEY=...`
+- `FASTGPT_GLOBAL_APP_KEY=...` for global Q&A app access
+- `FASTGPT_GLOBAL_APP_MODEL=tysl-local-app-global-v2` (or your global FastGPT app channel)
+- `FASTGPT_SOLUTION_APP_KEY=...` for single-document Q&A (falls back to `FASTGPT_WORKFLOW_KEY`)
+- `FASTGPT_SOLUTION_APP_MODEL=solution-kb-chat` (single-document FastGPT app channel)
 - `ENABLE_LEGACY_DRAFTS=false` to keep old draft/PPT endpoints disabled in the main customer-service path
 
 ## Frontend Setup
@@ -59,6 +70,7 @@ Open `http://localhost:5173`.
 3. Open a single document and run scoped Q&A against that source only.
 4. Maintain SOPs, escalation rules, and standard replies in the SOP library.
 5. Use the assistant as a support copilot for refund, complaint, activation, account, and escalation scenarios.
+6. Submit new knowledge or knowledge changes into a review queue, then approve and publish them to FastGPT.
 
 ## Architecture
 
@@ -74,8 +86,49 @@ Open `http://localhost:5173`.
 - Uploaded files: `server/public/files`
 - Extracted images: `server/public/images`
 
+`server/src/db.json` now stores both published knowledge assets and `knowledgeSubmissions` waiting for review or publication.
+
+Internal-support submissions require `FASTGPT_INTERNAL_DATASET_ID`. If it is not configured, internal documents will stay blocked at publish time instead of falling back to the public dataset.
+
+## Inventory And Governance
+
+Before importing large document batches into FastGPT, generate an inventory and review version/security classification first.
+
+```bash
+cd server
+node src/scripts/generate-knowledge-inventory.js --dir="C:\\path\\to\\docs" --output="C:\\path\\to\\inventory-output"
+```
+
+The scanner produces JSON and CSV inventory files, classifies files into `PUBLIC_CS` / `INTERNAL_SUPPORT` / `RESTRICTED`, and records `SCAN_ERROR` items instead of aborting the whole batch when a source file cannot be parsed.
+
+See `docs/KNOWLEDGE-BASE-GOVERNANCE-PLAN.md` for the recommended production library structure and document classification rules.
+
+To convert the inventory into an import checklist and recommended dataset plan:
+
+```bash
+cd server
+node src/scripts/generate-import-manifest.js --inventory="C:\\path\\to\\inventory-output\\knowledge-inventory.json" --output="C:\\path\\to\\manifest-output"
+```
+
+The manifest generator maps internal-only documents to `IMPORT_INTERNAL_ONLY`, spreadsheet sources to `EXTRACT_THEN_IMPORT`, and explicitly sensitive files to `SPLIT_OR_REDACT`.
+
+To extract Q&A spreadsheets and device compatibility sheets into import-ready Markdown and JSON:
+
+```bash
+cd server
+node src/scripts/extract-xlsx-knowledge.js --file="C:\\path\\to\\知识素材.xlsx" --output="C:\\path\\to\\xlsx-derived-output"
+```
+
+To export spreadsheet Q&A pairs into FastGPT template CSV format (`q,a,indexes`):
+
+```bash
+cd server
+node src/scripts/export-xlsx-fastgpt-qa.js --file="C:\\path\\to\\sheet-a.xlsx" --file="C:\\path\\to\\sheet-b.xlsx" --output="C:\\path\\to\\qa-csv-output"
+```
+
 ## Notes
 
 - The backend still lives mostly in `server/src/index.js`.
 - Some legacy draft/PPT generation code still exists in the backend and is now disabled by default unless `ENABLE_LEGACY_DRAFTS=true`.
 - This project focuses on customer service knowledge retrieval, SOP execution, and AI response assistance.
+- For the current release checklist and minimum deployment sizing, see `docs/FASTGPT_DEPLOYMENT.md`.
